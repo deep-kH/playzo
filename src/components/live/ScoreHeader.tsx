@@ -5,6 +5,7 @@ interface ScoreHeaderProps {
   battingTeamName: string;
   target: number | null;
   maxOvers: number;
+  stats?: Record<string, any>;
 }
 
 export function ScoreHeader({
@@ -12,17 +13,13 @@ export function ScoreHeader({
   battingTeamName,
   target,
   maxOvers,
+  stats,
 }: ScoreHeaderProps) {
-  const oversFloat = parseFloat(String(innings.total_overs));
-  const crr =
-    oversFloat > 0 ? (innings.total_runs / oversFloat).toFixed(2) : "0.00";
+  // ✅ Read CRR from stats (computed by backend)
+  const crr = stats?.crr ?? "0.00";
 
-  let rrr: string | null = null;
-  if (target && oversFloat > 0) {
-    const remaining = maxOvers - oversFloat;
-    const needed = target - innings.total_runs;
-    rrr = remaining > 0 ? (needed / remaining).toFixed(2) : "—";
-  }
+  // ✅ Read RRR from stats (computed by backend)
+  const rrr = stats?.rrr ? String(stats.rrr) : null;
 
   return (
     <div className="card !p-4">
@@ -50,7 +47,7 @@ export function ScoreHeader({
                 </span>{" "}
                 from{" "}
                 <span className="font-bold">
-                  {(maxOvers - oversFloat).toFixed(1)}
+                  {(maxOvers - parseFloat(String(innings.total_overs ?? 0))).toFixed(1)}
                 </span>{" "}
                 ov
               </p>

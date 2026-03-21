@@ -1,75 +1,57 @@
-// src/features/scoring/football/components/FootballMatchStats.tsx
-import React from "react";
-import type { FootballMatchState } from "../types";
+// ============================================================================
+// FootballMatchStats — Animated bar-chart stat comparison (Rebuilt V5)
+// ============================================================================
+"use client";
 
-export function FootballMatchStats({ state }: { state: FootballMatchState }) {
-  const { team_a_stats: a, team_b_stats: b } = state;
+import React from "react";
+import type { FootballTeamStats } from "../types";
+
+interface Props {
+  teamA: FootballTeamStats;
+  teamB: FootballTeamStats;
+  teamAName: string;
+  teamBName: string;
+}
+
+function StatBar({ label, a, b }: { label: string; a: number; b: number }) {
+  const total = a + b || 1;
+  const pctA = (a / total) * 100;
+  const pctB = (b / total) * 100;
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[0_4px_12px_var(--shadow)] w-full overflow-hidden">
-      <div className="bg-[var(--surface-alt)] border-b border-[var(--border)] px-4 py-3">
-        <h3 className="text-center text-base font-bold text-[var(--text)] uppercase tracking-wide">
-          Match Stats
-        </h3>
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-bold tabular-nums text-[var(--text)]">{a}</span>
+        <span className="text-[var(--text-muted)] uppercase tracking-wider text-[10px] font-semibold">{label}</span>
+        <span className="font-bold tabular-nums text-[var(--text)]">{b}</span>
       </div>
-      <div className="p-4 md:p-6">
-        <div className="flex flex-col gap-5">
-          <StatRow label="Shots on Target"  valA={a.shots_on_target}  valB={b.shots_on_target} />
-          <StatRow label="Shots off Target" valA={a.shots_off_target} valB={b.shots_off_target} />
-          <StatRow label="Corners"          valA={a.corners}          valB={b.corners} />
-          <StatRow label="Fouls"            valA={a.fouls}            valB={b.fouls} />
-          <StatRow label="Offsides"         valA={a.offsides}         valB={b.offsides} />
-          <StatRow label="Yellow Cards"     valA={a.yellow_cards}     valB={b.yellow_cards} type="warning" />
-          <StatRow label="Red Cards"        valA={a.red_cards}        valB={b.red_cards}    type="danger" />
-        </div>
+      <div className="flex h-2 gap-0.5 rounded-full overflow-hidden">
+        <div className="bg-emerald-500 rounded-l-full transition-all duration-700 ease-out"
+          style={{ width: `${pctA}%` }} />
+        <div className="bg-amber-500 rounded-r-full transition-all duration-700 ease-out ml-auto"
+          style={{ width: `${pctB}%` }} />
       </div>
     </div>
   );
 }
 
-function StatRow({
-  label,
-  valA,
-  valB,
-  type = "primary",
-}: {
-  label: string;
-  valA: number;
-  valB: number;
-  type?: "primary" | "warning" | "danger";
-}) {
-  const total = valA + valB;
-  const percentA = total === 0 ? 50 : (valA / total) * 100;
-  const percentB = total === 0 ? 50 : (valB / total) * 100;
-
-  const barColorA = type === "warning"
-    ? "bg-[var(--warning)]"
-    : type === "danger"
-    ? "bg-[var(--danger)]"
-    : "bg-[var(--primary)]";
-
-  const barColorB = type === "warning"
-    ? "bg-[var(--warning)]/60"
-    : type === "danger"
-    ? "bg-[var(--danger)]/60"
-    : "bg-[var(--success)]";
-
+export function FootballMatchStats({ teamA, teamB, teamAName, teamBName }: Props) {
   return (
-    <div>
-      <div className="flex justify-between items-center text-sm font-semibold mb-2">
-        <span className="w-8 text-left text-[var(--text)]">{valA}</span>
-        <span className="text-[var(--text-muted)]">{label}</span>
-        <span className="w-8 text-right text-[var(--text)]">{valB}</span>
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-widest text-emerald-500">{teamAName}</span>
+        <h3 className="font-bold text-sm uppercase tracking-widest text-[var(--text)]">Match Stats</h3>
+        <span className="text-xs font-bold uppercase tracking-widest text-amber-500">{teamBName}</span>
       </div>
-      <div className="flex h-1.5 rounded-full overflow-hidden bg-[var(--border)]">
-        <div
-          className={`${barColorA} transition-all duration-500`}
-          style={{ width: `${percentA}%` }}
-        />
-        <div
-          className={`${barColorB} transition-all duration-500`}
-          style={{ width: `${percentB}%` }}
-        />
+      <div className="space-y-3">
+        <StatBar label="Shots on Target" a={teamA.shots_on_target} b={teamB.shots_on_target} />
+        <StatBar label="Shots off Target" a={teamA.shots_off_target} b={teamB.shots_off_target} />
+        <StatBar label="Corners" a={teamA.corners} b={teamB.corners} />
+        <StatBar label="Fouls" a={teamA.fouls} b={teamB.fouls} />
+        <StatBar label="Yellow Cards" a={teamA.yellow_cards} b={teamB.yellow_cards} />
+        <StatBar label="Red Cards" a={teamA.red_cards} b={teamB.red_cards} />
+        <StatBar label="Free Kicks" a={teamA.free_kicks} b={teamB.free_kicks} />
+        <StatBar label="Offsides" a={teamA.offsides} b={teamB.offsides} />
       </div>
     </div>
   );

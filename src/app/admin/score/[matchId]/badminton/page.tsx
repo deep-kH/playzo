@@ -1,22 +1,46 @@
 // src/app/admin/score/[matchId]/badminton/page.tsx
 "use client";
 
-import React from "react";
-import { useParams, useRouter } from "next/navigation";
-import { useLiveState } from "@/features/scoring/core/useLiveState";
+import { useParams } from "next/navigation";
+import { useLiveMatch } from "@/features/realtime/useLiveMatch";
 import { BadmintonScorerController } from "@/features/scoring/badminton/components/BadmintonScorerController";
-import { INITIAL_BADMINTON_STATE } from "@/features/scoring/badminton/types";
 import type { BadmintonMatchState } from "@/features/scoring/badminton/types";
+import { INITIAL_BADMINTON_STATE } from "@/features/scoring/badminton/types";
 
-export default function BadmintonAdminScorer() {
-  const params = useParams();
-  const router = useRouter();
-  const matchId = params.matchId as string;
+interface PlayerInfo {
+  id: string;
+  name: string;
+}
 
-  const { state, match, teamAName, teamBName, loading, error } = useLiveState<BadmintonMatchState>({
-    matchId,
-    initialState: INITIAL_BADMINTON_STATE,
-  });
+export default function BadmintonAdminScorerPage() {
+  const params = useParams<{ matchId: string }>();
+  const matchId = params?.matchId as string;
+
+  const { state: lsState, match, teamAName, teamBName, loading, error } =
+    useLiveMatch<BadmintonMatchState>({
+      matchId,
+      initialState: INITIAL_BADMINTON_STATE,
+    });
+
+  // Read player info from match.settings.badminton_players (set during match creation)
+  const bmPlayers = (match?.settings as any)?.badminton_players;
+  const bmMatchType = (match?.settings as any)?.match_type || "singles";
+  const bmPointsPerSet = (match?.settings as any)?.points_per_set;
+  const bmSetsToWin = (match?.settings as any)?.sets_to_win;
+  const bmPointCap = (match?.settings as any)?.point_cap;
+  
+  // If the DB state is completely uninitialized (no events yet), override defaults
+  // with the actual config from the match settings.
+  const isUninitialized = !lsState.last_event_text;
+  const state = { 
+    ...lsState, 
+    match_type: isUninitialized ? bmMatchType : lsState.match_type,
+    ...(isUninitialized && bmPointsPerSet ? { points_per_set: bmPointsPerSet } : {}),
+    ...(isUninitialized && bmSetsToWin ? { sets_to_win: bmSetsToWin } : {}),
+    ...(isUninitialized && bmPointCap ? { point_cap: bmPointCap } : {}),
+  } as BadmintonMatchState;
+  const teamAPlayers: PlayerInfo[] = bmPlayers?.side_a ?? [];
+  const teamBPlayers: PlayerInfo[] = bmPlayers?.side_b ?? [];
 
   if (loading) {
     return (
@@ -31,11 +55,12 @@ export default function BadmintonAdminScorer() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 p-8">
         <div className="text-4xl">⚠️</div>
-        <h2 className="text-xl font-bold text-[var(--text)]">Unable to Load Match</h2>
-        <p className="text-[var(--text-muted)] text-sm max-w-sm text-center">{error}</p>
-        <button onClick={() => window.location.reload()} className="mt-4 px-6 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-xl font-medium hover:bg-[var(--surface-alt)]">
-          Retry
-        </button>
+        <h2 className="text-xl font-bold text-[var(--text)]">
+          Unable to Load Match
+        </h2>
+        <p className="text-[var(--text-muted)] text-sm max-w-sm text-center">
+          {error}
+        </p>
       </div>
     );
   }
@@ -44,31 +69,33 @@ export default function BadmintonAdminScorer() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 p-8">
         <div className="text-4xl">🏸</div>
-        <h2 className="text-xl font-bold text-[var(--text)]">Match Not Found</h2>
-        <p className="text-[var(--text-muted)] text-sm">This match does not exist.</p>
-        <button onClick={() => router.push("/admin/tournaments")} className="mt-4 px-6 py-2 text-[var(--primary)] bg-[var(--primary)]/10 rounded-xl font-medium hover:bg-[var(--primary)]/20">
-          Back to Tournaments
-        </button>
+        <h2 className="text-xl font-bold text-[var(--text)]">
+          Match Not Found
+        </h2>
+        <p className="text-[var(--text-muted)] text-sm">
+          This match does not exist.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex items-start justify-center p-4">
-      <div className="w-full max-w-3xl pt-4">
-        <div className="mb-6 flex items-center justify-between">
-          <button onClick={() => router.back()} className="text-sm font-semibold text-[var(--primary)] hover:underline">
-            &larr; Back
-          </button>
-          <div className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-            Badminton Scorer Panel
-          </div>
+    <div className="min-h-screen bg-[var(--bg)]">
+      <div className="max-w-xl mx-auto p-4 md:p-6 space-y-4">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
+            🏸 Badminton Scorer
+          </h1>
         </div>
+
         <BadmintonScorerController
           matchId={matchId}
           state={state}
           teamAName={teamAName}
           teamBName={teamBName}
+          teamAPlayers={teamAPlayers}
+          teamBPlayers={teamBPlayers}
         />
       </div>
     </div>

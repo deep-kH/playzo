@@ -1,71 +1,50 @@
-// src/features/scoring/football/types.ts
+// ============================================================================
+// Football Scoring — Type Definitions (Rebuilt V5)
+// ============================================================================
 
-export type FootballTeam = "team_a" | "team_b";
+// ── Match Phases ──
+export type FootballPhase =
+  | 'not_started'
+  | 'first_half'
+  | 'half_time'
+  | 'second_half'
+  | 'full_time'
+  | 'extra_time_first'
+  | 'extra_time_half'
+  | 'extra_time_second'
+  | 'penalty_shootout'
+  | 'ended';
 
-// --- Match Phases (from docs/football.md) ---
-export type MatchPhase =
-  | "not_started"
-  | "first_half"
-  | "half_time"
-  | "second_half"
-  | "full_time"
-  | "extra_time_first"
-  | "extra_time_half"
-  | "extra_time_second"
-  | "penalty_shootout"
-  | "ended";
+export type FootballStatus = 'scheduled' | 'live' | 'halftime' | 'completed';
 
-// --- Events ---
-export type FootballEventType =
-  | "match_start"
-  | "match_pause"
-  | "match_resume"
-  | "half_time"
-  | "second_half_start"
-  | "full_time"
-  | "extra_time_start"
-  | "extra_time_half"
-  | "extra_time_second_start"
-  | "penalty_shootout_start"
-  | "match_end"
-  | "extra_time_added"
-  | "goal"
-  | "penalty_goal"
-  | "penalty_miss"
-  | "own_goal"
-  | "yellow_card"
-  | "red_card"
-  | "substitution"
-  | "foul"
-  | "corner"
-  | "goal_kick"
-  | "throw_in"
-  | "offside"
-  | "shot_on_target"
-  | "shot_off_target"
-  | "free_kick";
+// ── Event Types ──
+export const PRIMARY_EVENT_TYPES = [
+  'goal', 'own_goal', 'shot_on_target', 'shot_off_target',
+  'foul', 'yellow_card', 'red_card',
+  'corner', 'goal_kick', 'throw_in', 'free_kick',
+  'offside', 'substitution',
+] as const;
 
-export interface FootballEventPayload {
-  team?: FootballTeam;
-  player_id?: string;
-  player_name?: string;
-  assist_player_id?: string;
-  assist_player_name?: string;
-  sub_out_player_id?: string;
-  sub_in_player_id?: string;
-  sub_out_name?: string;
-  sub_in_name?: string;
-  fouled_player_id?: string;
-  fouled_player_name?: string;
-  card?: "none" | "yellow" | "red";
-  foul_outcome?: "free_kick" | "penalty" | "advantage";
-  extra_minutes?: number;
-  match_time_seconds?: number;
-  notes?: string;
-}
+export const MICRO_EVENT_TYPES = [
+  'interception', 'block', 'clearance', 'dribble',
+  'chance_created', 'save', 'tackle', 'possession_won',
+] as const;
 
-// --- Snapshot State ---
+export const CONTROL_EVENT_TYPES = [
+  'match_start', 'match_pause', 'match_resume',
+  'half_time', 'second_half_start',
+  'full_time', 'match_end',
+  'extra_time_start', 'extra_time_half', 'extra_time_second_start',
+  'extra_time_added',
+  'penalty_shootout_start', 'penalty_goal', 'penalty_miss',
+] as const;
 
+export type PrimaryEventType = typeof PRIMARY_EVENT_TYPES[number];
+export type MicroEventType = typeof MICRO_EVENT_TYPES[number];
+export type ControlEventType = typeof CONTROL_EVENT_TYPES[number];
+export type FootballEventType = PrimaryEventType | MicroEventType | ControlEventType;
+
+// ── Team Stats ──
 export interface FootballTeamStats {
   goals: number;
   corners: number;
@@ -78,92 +57,168 @@ export interface FootballTeamStats {
   goal_kicks: number;
   throw_ins: number;
   free_kicks: number;
-  possession_percentage?: number;
+  saves: number;
 }
 
+export const EMPTY_TEAM_STATS: FootballTeamStats = {
+  goals: 0, corners: 0, fouls: 0, yellow_cards: 0, red_cards: 0,
+  offsides: 0, shots_on_target: 0, shots_off_target: 0,
+  goal_kicks: 0, throw_ins: 0, free_kicks: 0, saves: 0,
+};
+
+// ── Player Stats (per-player in JSONB state) ──
+export interface PlayerMatchStats {
+  goals: number;
+  assists: number;
+  shots_on: number;
+  shots_off: number;
+  fouls_committed: number;
+  fouls_drawn: number;
+  yellow_cards: number;
+  red_cards: number;
+  saves: number;
+  blocks: number;
+  interceptions: number;
+  clearances: number;
+  dribbles: number;
+  chances_created: number;
+  team: string;
+}
+
+// ── Match Event (timeline item in JSONB state) ──
 export interface FootballMatchEvent {
   id: string;
-  type: FootballEventType;
-  team?: FootballTeam;
-  player_name?: string;
+  type: string;
+  team: string;
+  player_id: string;
+  player_name: string;
+  photo_url?: string;
+  assist_player_id?: string;
   assist_name?: string;
+  fouled_player_id?: string;
+  fouled_player_name?: string;
+  opposing_gk_id?: string;
+  sub_in_id?: string;        // substitution: player coming IN
+  sub_in_name?: string;
+  sub_out_name?: string;
   match_time_seconds: number;
-  stoppage_time_seconds?: number;
-  details?: string;
+  half: string;
+  restart?: string;
+  card?: string;
+  details: string;
   created_at: string;
 }
 
+// ── Penalty Kick ──
 export interface PenaltyKick {
-  team: FootballTeam;
-  player_id?: string;
-  player_name?: string;
+  team: string;
+  player_id: string;
+  player_name: string;
+  photo_url?: string;
   scored: boolean;
   order: number;
 }
 
+// ── Match State (stored in ls_match_state.state JSONB) ──
 export interface FootballMatchState {
-  phase: MatchPhase;
-  status: "scheduled" | "live" | "paused" | "completed";
-
-  // Clock
+  phase: FootballPhase;
+  status: FootballStatus;
   clock_running: boolean;
   elapsed_seconds: number;
   last_clock_start_time: string | null;
   added_extra_time_minutes: number;
-
-  // Stats
+  extra_time_duration_minutes?: number;
   team_a_stats: FootballTeamStats;
   team_b_stats: FootballTeamStats;
-
-  // Events timeline
+  player_stats: Record<string, PlayerMatchStats>;
   events: FootballMatchEvent[];
-
-  // Penalty shootout
   penalties: PenaltyKick[];
-
-  // UI tracking
   last_event_text?: string;
 }
 
-export const INITIAL_TEAM_STATS: FootballTeamStats = {
-  goals: 0,
-  corners: 0,
-  fouls: 0,
-  yellow_cards: 0,
-  red_cards: 0,
-  offsides: 0,
-  shots_on_target: 0,
-  shots_off_target: 0,
-  goal_kicks: 0,
-  throw_ins: 0,
-  free_kicks: 0,
-};
-
 export const INITIAL_FOOTBALL_STATE: FootballMatchState = {
-  phase: "not_started",
-  status: "scheduled",
+  phase: 'not_started',
+  status: 'scheduled',
   clock_running: false,
   elapsed_seconds: 0,
   last_clock_start_time: null,
   added_extra_time_minutes: 0,
-  team_a_stats: { ...INITIAL_TEAM_STATS },
-  team_b_stats: { ...INITIAL_TEAM_STATS },
+  team_a_stats: { ...EMPTY_TEAM_STATS },
+  team_b_stats: { ...EMPTY_TEAM_STATS },
+  player_stats: {},
   events: [],
   penalties: [],
 };
 
-/** Map phase to human-readable label */
-export function phaseLabel(phase: MatchPhase): string {
-  switch (phase) {
-    case "not_started":         return "NOT STARTED";
-    case "first_half":          return "1ST HALF";
-    case "half_time":           return "HALF TIME";
-    case "second_half":         return "2ND HALF";
-    case "full_time":           return "FULL TIME";
-    case "extra_time_first":    return "EXTRA TIME (1ST)";
-    case "extra_time_half":     return "ET HALF TIME";
-    case "extra_time_second":   return "EXTRA TIME (2ND)";
-    case "penalty_shootout":    return "PENALTY SHOOTOUT";
-    case "ended":               return "MATCH ENDED";
-  }
+// ── Player Tournament Stats (from fb_player_tournament_stats table) ──
+export interface PlayerTournamentStats {
+  id: string;
+  tournament_id: string;
+  player_id: string;
+  team_id: string;
+  player_name: string;
+  matches_played: number;
+  goals: number;
+  assists: number;
+  shots_on: number;
+  shots_off: number;
+  fouls: number;
+  yellow_cards: number;
+  red_cards: number;
+  saves: number;
+  blocks: number;
+  interceptions: number;
+  clearances: number;
+  dribbles: number;
+  chances_created: number;
+  clean_sheets: number;
+  rating_score: number;
+}
+
+// ── Helpers ──
+export function isPrimaryEvent(type: string): boolean {
+  return (PRIMARY_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+export function isMicroEvent(type: string): boolean {
+  return (MICRO_EVENT_TYPES as readonly string[]).includes(type);
+}
+
+export function getPhaseLabel(phase: FootballPhase): string {
+  const labels: Record<FootballPhase, string> = {
+    not_started: 'Not Started',
+    first_half: '1st Half',
+    half_time: 'Half Time',
+    second_half: '2nd Half',
+    full_time: 'Full Time',
+    extra_time_first: 'Extra Time 1st',
+    extra_time_half: 'ET Half Time',
+    extra_time_second: 'Extra Time 2nd',
+    penalty_shootout: 'Penalties',
+    ended: 'Ended',
+  };
+  return labels[phase] || phase;
+}
+
+export function getEventIcon(type: string): string {
+  const icons: Record<string, string> = {
+    goal: '⚽', own_goal: '🔴⚽', shot_on_target: '🎯',
+    shot_off_target: '💨', foul: '🚨', yellow_card: '🟨',
+    red_card: '🟥', corner: '📐', goal_kick: '🥅',
+    throw_in: '↗️', free_kick: '🔵', offside: '🚩',
+    substitution: '🔄', interception: '🛡️', block: '🧱',
+    clearance: '🧹', dribble: '⚡', chance_created: '✨',
+    save: '🧤', tackle: '💪', possession_won: '🏆',
+    penalty_goal: '⚽✅', penalty_miss: '❌',
+  };
+  return icons[type] || '📋';
+}
+
+/** Normalize legacy event types to current names */
+export function normalizeFootballEventType(type: string): string {
+  const map: Record<string, string> = {
+    'penalty_goal_shootout': 'penalty_goal',
+    'penalty_miss_shootout': 'penalty_miss',
+  };
+  return map[type] || type;
 }

@@ -84,16 +84,16 @@ export default function AdminDashboard() {
       <div className="card">
         <h2 className="text-lg font-semibold text-text mb-4">Quick Actions</h2>
         <div className="flex flex-wrap gap-3">
-          <Link href="/admin/teams" className="btn-primary text-sm no-underline">
+          <Link href="/admin/teams" className="btn-primary text-sm text-text-muted no-underline">
             + New Team
           </Link>
           <Link
             href="/admin/tournaments"
-            className="btn-primary text-sm no-underline"
+            className="btn-primary text-sm text-text-muted no-underline"
           >
             + New Tournament
           </Link>
-          <Link href="/admin/players" className="btn-secondary text-sm no-underline">
+          <Link href="/admin/players" className="btn-secondary text-sm text-text-muted no-underline">
             + New Player
           </Link>
         </div>

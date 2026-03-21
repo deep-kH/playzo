@@ -3,6 +3,7 @@
 export type BadmintonTeam = "team_a" | "team_b";
 export type MatchType = "singles" | "doubles";
 export type ServingSide = "right" | "left";
+export type GameKey = "g1" | "g2" | "g3" | "g4" | "g5";
 
 // --- Events ---
 export type BadmintonEventType =
@@ -41,16 +42,17 @@ export interface DoublesPositions {
 // --- Full Snapshot (matches DB format from rpc_process_badminton) ---
 export interface BadmintonMatchState {
   match_type: MatchType;
-  status: "scheduled" | "live" | "interval" | "completed";
+  status: "scheduled" | "live" | "interval" | "completed" | "incomplete";
 
-  current_game: 1 | 2 | 3;
+  current_game: number;
 
-  // DB uses g1/g2/g3 object format
-  scores: {
-    g1: GameScore;
-    g2: GameScore;
-    g3: GameScore;
-  };
+  // Configurable scoring rules
+  points_per_set: number;
+  sets_to_win: number;
+  point_cap: number;
+
+  // DB uses g1/g2/g3/g4/g5 object format
+  scores: Record<GameKey, GameScore>;
 
   games_won: {
     team_a: number;
@@ -64,7 +66,7 @@ export interface BadmintonMatchState {
   // Doubles positions (only for doubles)
   doubles_positions?: DoublesPositions | null;
 
-  // Rally history for undo (client-side only for now)
+  // Rally history for undo
   rally_history?: RallyEntry[];
 
   // UI helpers
@@ -87,13 +89,15 @@ export function getServingSide(serverScore: number): ServingSide {
 
 /** Get current game score */
 export function getCurrentScore(state: BadmintonMatchState): GameScore {
-  const key = `g${state.current_game}` as "g1" | "g2" | "g3";
+  const key = `g${state.current_game}` as GameKey;
   return state.scores[key] ?? { team_a: 0, team_b: 0 };
 }
 
 /** Get scores as array for iteration */
 export function getScoresArray(state: BadmintonMatchState): GameScore[] {
-  return [state.scores.g1, state.scores.g2, state.scores.g3];
+  const totalSets = state.sets_to_win * 2 - 1;
+  const keys: GameKey[] = ["g1", "g2", "g3", "g4", "g5"];
+  return keys.slice(0, totalSets).map((k) => state.scores[k] ?? { team_a: 0, team_b: 0 });
 }
 
 // --- Constants ---
@@ -103,10 +107,15 @@ export const INITIAL_BADMINTON_STATE: BadmintonMatchState = {
   match_type: "singles",
   status: "scheduled",
   current_game: 1,
+  points_per_set: 21,
+  sets_to_win: 2,
+  point_cap: 30,
   scores: {
     g1: { ...INITIAL_GAME_SCORE },
     g2: { ...INITIAL_GAME_SCORE },
     g3: { ...INITIAL_GAME_SCORE },
+    g4: { ...INITIAL_GAME_SCORE },
+    g5: { ...INITIAL_GAME_SCORE },
   },
   games_won: { team_a: 0, team_b: 0 },
   server: "team_a",

@@ -75,7 +75,7 @@ export default function TeamsPage() {
             resetForm();
             setShowForm(true);
           }}
-          className="btn-primary text-sm"
+          className="btn-primary text-sm text-text-muted"
         >
           + New Team
         </button>

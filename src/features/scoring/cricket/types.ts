@@ -84,3 +84,37 @@ export interface MatchSetupInput {
 
 export type InningsEndReason = "all_out" | "overs_complete" | "target_reached" | "declared";
 
+/* ── Live Match State (stored in ls_match_state.state jsonb) ──── */
+
+export interface CricketMatchState {
+  runs: number;
+  wickets: number;
+  overs: number;
+  ballsInOver: number;
+  striker: string | null;
+  nonStriker: string | null;
+  bowler: string | null;
+  matchStatus: "scheduled" | "live" | "completed" | "paused";
+  inningsStatus: "not_started" | "live" | "ended";
+  currentInningsNumber: 1 | 2;
+  target?: number | null;
+  extras: number;
+  lastEvent?: string | null;
+}
+
+export const DEFAULT_CRICKET_STATE: CricketMatchState = {
+  runs: 0,
+  wickets: 0,
+  overs: 0,
+  ballsInOver: 0,
+  striker: null,
+  nonStriker: null,
+  bowler: null,
+  matchStatus: "scheduled",
+  inningsStatus: "not_started",
+  currentInningsNumber: 1,
+  target: null,
+  extras: 0,
+  lastEvent: null,
+};
+

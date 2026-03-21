@@ -11,7 +11,7 @@ import { useTournamentMatchRealtime } from "@/features/matches/hooks";
 
 export default function TournamentDetailPage() {
   const params = useParams();
-  const id = params.id as string;
+  const id = params?.id as string;
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);

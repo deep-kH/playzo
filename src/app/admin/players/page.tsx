@@ -10,6 +10,29 @@ import {
   deletePlayerAdmin,
 } from "@/features/players/adminApi";
 
+const getRolesForSport = (sport?: string | null) => {
+  if (sport === "football") {
+    return [
+      { value: "goalkeeper", label: "Goalkeeper" },
+      { value: "defender", label: "Defender" },
+      { value: "midfielder", label: "Midfielder" },
+      { value: "forward", label: "Forward" },
+    ];
+  }
+  if (sport === "badminton") {
+    return [
+      { value: "singles-specialist", label: "Singles Specialist" },
+      { value: "doubles-specialist", label: "Doubles Specialist" },
+    ];
+  }
+  return [
+    { value: "batsman", label: "Batsman" },
+    { value: "bowler", label: "Bowler" },
+    { value: "all-rounder", label: "All-rounder" },
+    { value: "wicketkeeper", label: "Wicketkeeper" },
+  ];
+};
+
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -18,10 +41,11 @@ export default function PlayersPage() {
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [name, setName] = useState("");
   const [teamId, setTeamId] = useState("");
-  const [role, setRole] = useState("batter");
+  const [role, setRole] = useState("batsman");
   const [jerseyNumber, setJerseyNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [filterTeam, setFilterTeam] = useState("");
+  const [selectedSport, setSelectedSport] = useState<string>("");
 
   const fetchData = useCallback(async () => {
     const [playersData, teamsData] = await Promise.all([
@@ -41,8 +65,9 @@ export default function PlayersPage() {
   const resetForm = () => {
     setName("");
     setTeamId("");
-    setRole("batter");
+    setRole("batsman");
     setJerseyNumber("");
+    setSelectedSport("");
     setEditingPlayer(null);
     setShowForm(false);
   };
@@ -50,15 +75,44 @@ export default function PlayersPage() {
   const openEdit = (player: Player) => {
     setEditingPlayer(player);
     setName(player.name);
+    const playerTeam = teams.find((t) => t.id === (player.team_id ?? ""));
+    setSelectedSport(playerTeam?.sport ?? "");
     setTeamId(player.team_id ?? "");
-    setRole(player.role ?? "batter");
+    setRole(player.role ?? "batsman");
     setJerseyNumber(player.jersey_number?.toString() ?? "");
     setShowForm(true);
   };
 
+  const handleSportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const sport = e.target.value;
+    setSelectedSport(sport);
+    setTeamId("");
+    const roles = getRolesForSport(sport);
+    setRole(roles[0]?.value ?? "batsman");
+  };
+
+  const handleTeamChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newTeamId = e.target.value;
+    setTeamId(newTeamId);
+  };
+
+  const sportFilteredTeams = selectedSport
+    ? teams.filter((t) => t.sport === selectedSport)
+    : teams;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    
+    const selectedTeam = teams.find((t) => t.id === teamId);
+    const sport = selectedTeam?.sport || "cricket";
+    const allowedRoles = getRolesForSport(sport).map(r => r.value);
+    
+    if (teamId && !allowedRoles.includes(role)) {
+      alert(`Invalid role "${role}" for sport "${sport}". Please update the role.`);
+      setSaving(false);
+      return;
+    }
 
     const payload = {
       name,
@@ -116,6 +170,24 @@ export default function PlayersPage() {
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Sport — first field */}
+              <div>
+                <label htmlFor="player-sport" className="block text-sm font-medium text-text mb-1.5">
+                  Sport
+                </label>
+                <select
+                  id="player-sport"
+                  value={selectedSport}
+                  onChange={handleSportChange}
+                  className="input-field"
+                  required
+                >
+                  <option value="">Select sport</option>
+                  <option value="cricket">🏏 Cricket</option>
+                  <option value="football">⚽ Football</option>
+                  <option value="badminton">🏸 Badminton</option>
+                </select>
+              </div>
               <div>
                 <label htmlFor="player-name" className="block text-sm font-medium text-text mb-1.5">
                   Name
@@ -137,12 +209,13 @@ export default function PlayersPage() {
                 <select
                   id="player-team"
                   value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
+                  onChange={handleTeamChange}
                   className="input-field"
                   required
+                  disabled={!selectedSport}
                 >
-                  <option value="">Select team</option>
-                  {teams.map((t) => (
+                  <option value="">{selectedSport ? "Select team" : "Select sport first"}</option>
+                  {sportFilteredTeams.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
                     </option>
@@ -158,11 +231,13 @@ export default function PlayersPage() {
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                   className="input-field"
+                  disabled={!selectedSport}
                 >
-                  <option value="batter">Batter</option>
-                  <option value="bowler">Bowler</option>
-                  <option value="all-rounder">All-Rounder</option>
-                  <option value="wicket-keeper">Wicket-Keeper</option>
+                  {getRolesForSport(selectedSport).map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import type { Match, Team, Tournament } from "@/lib/types/database";
+import type { Match, Team, Tournament, Player } from "@/lib/types/database";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import Link from "next/link";
 import { getTournamentById, getTournamentTeams } from "@/features/tournaments/api";
@@ -13,17 +13,20 @@ import {
   deleteMatch,
 } from "@/features/matches/api";
 import { getTeamsByIds } from "@/features/teams/api";
+import { fetchPlayersForTeam } from "@/features/players/api";
 import {
   addTeamToTournamentAdmin,
   listTeamsBySportAdmin,
   removeTeamFromTournamentAdmin,
 } from "@/features/tournaments/adminApi";
 
+type BadmintonMatchType = "singles" | "doubles";
+
 type Tab = "teams" | "matches";
 
 export default function MatchesPage() {
   const params = useParams();
-  const tournamentId = params.id as string;
+  const tournamentId = params?.id as string;
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -38,13 +41,26 @@ export default function MatchesPage() {
   const [showForm, setShowForm] = useState(false);
   const [teamAId, setTeamAId] = useState("");
   const [teamBId, setTeamBId] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [venue, setVenue] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Team selector
   const [allSportTeams, setAllSportTeams] = useState<Team[]>([]);
   const [tournamentTeamIds, setTournamentTeamIds] = useState<string[]>([]);
+
+  // Badminton-specific
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [bmMatchType, setBmMatchType] = useState<BadmintonMatchType>("singles");
+  const [bmSideA, setBmSideA] = useState<string[]>([]);  // player IDs for singles side A
+  const [bmSideB, setBmSideB] = useState<string[]>([]);  // player IDs for singles side B
+  const [bmTeamAId, setBmTeamAId] = useState("");  // team ID for doubles side A
+  const [bmTeamBId, setBmTeamBId] = useState("");  // team ID for doubles side B
+  const [bmPointsPerSet, setBmPointsPerSet] = useState(21);
+  const [bmSetsToWin, setBmSetsToWin] = useState(2);
+  const [bmPointCap, setBmPointCap] = useState(30);
+
+  // Football-specific
+  const [fbPlayersPerTeam, setFbPlayersPerTeam] = useState(11);
+  const [fbMatchDuration, setFbMatchDuration] = useState(90);
 
   const fetchData = useCallback(async () => {
     const [t, matchData, ttRes] = await Promise.all([
@@ -75,6 +91,13 @@ export default function MatchesPage() {
     if (t) {
       const sportTeams = await listTeamsBySportAdmin(t.sport);
       setAllSportTeams((sportTeams as Team[]) ?? []);
+
+      // For badminton: also load all players from tournament teams
+      if (t.sport === "badminton" && teamIds.length > 0) {
+        const playerPromises = teamIds.map((tid) => fetchPlayersForTeam(tid));
+        const playerArrays = await Promise.all(playerPromises);
+        setAllPlayers(playerArrays.flat());
+      }
     }
 
     setLoading(false);
@@ -112,29 +135,126 @@ export default function MatchesPage() {
     setActiveTab("matches");
   };
 
+  const isBadminton = tournament?.sport === "badminton";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (teamAId === teamBId) {
-      alert("Team A and Team B must be different.");
-      return;
-    }
     setSaving(true);
 
-    await createMatch({
-      tournament_id: tournamentId,
-      team_a_id: teamAId,
-      team_b_id: teamBId,
-      start_time: startTime || null,
-      venue: venue || null,
-      settings: tournament?.settings ?? {},
-    });
+    if (isBadminton) {
+      if (bmMatchType === "singles") {
+        // ── SINGLES: player-only, no teams ──
+        if (bmSideA.length !== 1 || bmSideB.length !== 1) {
+          alert("Select 1 player per side.");
+          setSaving(false);
+          return;
+        }
+        if (bmSideA[0] === bmSideB[0]) {
+          alert("A player cannot play against themselves.");
+          setSaving(false);
+          return;
+        }
+        const pA = allPlayers.find((p) => p.id === bmSideA[0]);
+        const pB = allPlayers.find((p) => p.id === bmSideB[0]);
+        const bmPlayers = {
+          side_a: [{ id: bmSideA[0], name: pA?.name ?? "Unknown" }],
+          side_b: [{ id: bmSideB[0], name: pB?.name ?? "Unknown" }],
+        };
+        await createMatch({
+          tournament_id: tournamentId,
+          team_a_id: null,
+          team_b_id: null,
+          start_time: null,
+          venue: null,
+          settings: {
+            ...(tournament?.settings ?? {}),
+            match_type: "singles",
+            badminton_players: bmPlayers,
+            points_per_set: bmPointsPerSet,
+            sets_to_win: bmSetsToWin,
+            point_cap: bmPointCap,
+          },
+        });
+      } else {
+        // ── DOUBLES: team-based, players auto-derived ──
+        if (!bmTeamAId || !bmTeamBId) {
+          alert("Select both teams.");
+          setSaving(false);
+          return;
+        }
+        if (bmTeamAId === bmTeamBId) {
+          alert("Team A and Team B must be different.");
+          setSaving(false);
+          return;
+        }
+        // Derive players from each team
+        const teamAPlayersForMatch = allPlayers.filter(
+          (p) => (p.team_id === bmTeamAId || p.sold_team_id === bmTeamAId)
+        ).slice(0, 2);
+        const teamBPlayersForMatch = allPlayers.filter(
+          (p) => (p.team_id === bmTeamBId || p.sold_team_id === bmTeamBId)
+        ).slice(0, 2);
+        if (teamAPlayersForMatch.length < 2 || teamBPlayersForMatch.length < 2) {
+          alert("Each team must have at least 2 players for doubles.");
+          setSaving(false);
+          return;
+        }
+        const bmPlayers = {
+          side_a: teamAPlayersForMatch.map((p) => ({ id: p.id, name: p.name })),
+          side_b: teamBPlayersForMatch.map((p) => ({ id: p.id, name: p.name })),
+        };
+        await createMatch({
+          tournament_id: tournamentId,
+          team_a_id: bmTeamAId,
+          team_b_id: bmTeamBId,
+          start_time: null,
+          venue: null,
+          settings: {
+            ...(tournament?.settings ?? {}),
+            match_type: "doubles",
+            badminton_players: bmPlayers,
+            points_per_set: bmPointsPerSet,
+            sets_to_win: bmSetsToWin,
+            point_cap: bmPointCap,
+          },
+        });
+      }
+    } else {
+      // Non-badminton: team-based
+      if (teamAId === teamBId) {
+        alert("Team A and Team B must be different.");
+        setSaving(false);
+        return;
+      }
+      
+      const extraSettings = tournament?.sport === "football" 
+        ? { sport: "football", match_duration_minutes: fbMatchDuration, players_per_team: fbPlayersPerTeam } 
+        : { sport: tournament?.sport };
+
+      await createMatch({
+        tournament_id: tournamentId,
+        team_a_id: teamAId,
+        team_b_id: teamBId,
+        start_time: null,
+        venue: null,
+        settings: { ...(tournament?.settings ?? {}), ...extraSettings },
+      });
+    }
 
     setSaving(false);
     setShowForm(false);
     setTeamAId("");
     setTeamBId("");
-    setStartTime("");
-    setVenue("");
+    setBmSideA([]);
+    setBmSideB([]);
+    setBmTeamAId("");
+    setBmTeamBId("");
+    setBmMatchType("singles");
+    setBmPointsPerSet(21);
+    setBmSetsToWin(2);
+    setBmPointCap(30);
+    setFbPlayersPerTeam(11);
+    setFbMatchDuration(90);
     fetchData();
   };
 
@@ -290,7 +410,7 @@ export default function MatchesPage() {
             </h2>
             <button
               onClick={() => setShowForm(true)}
-              disabled={teams.length < 2}
+              disabled={isBadminton ? allPlayers.length < 2 : teams.length < 2}
               className="btn-primary text-sm"
             >
               + New Match
@@ -322,84 +442,243 @@ export default function MatchesPage() {
                 Schedule Match
               </h3>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label
-                      htmlFor="m-teamA"
-                      className="block text-sm font-medium text-[var(--text)] mb-1.5"
-                    >
-                      Team A
-                    </label>
-                    <select
-                      id="m-teamA"
-                      value={teamAId}
-                      onChange={(e) => setTeamAId(e.target.value)}
-                      className="input-field"
-                      required
-                    >
-                      <option value="">Select team</option>
-                      {teams.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="m-teamB"
-                      className="block text-sm font-medium text-[var(--text)] mb-1.5"
-                    >
-                      Team B
-                    </label>
-                    <select
-                      id="m-teamB"
-                      value={teamBId}
-                      onChange={(e) => setTeamBId(e.target.value)}
-                      className="input-field"
-                      required
-                    >
-                      <option value="">Select team</option>
-                      {teams
-                        .filter((t) => t.id !== teamAId)
-                        .map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
+                {isBadminton ? (
+                  /* ── Badminton: Player-centric form ── */
+                  <>
+                    {/* Singles / Doubles toggle */}
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text)] mb-2">
+                        Match Type
+                      </label>
+                      <div className="flex gap-2">
+                        {(["singles", "doubles"] as BadmintonMatchType[]).map((mt) => (
+                          <button
+                            key={mt}
+                            type="button"
+                            onClick={() => {
+                              setBmMatchType(mt);
+                              setBmSideA([]);
+                              setBmSideB([]);
+                            }}
+                            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all active:scale-95 ${
+                              bmMatchType === mt
+                                ? "border-[var(--primary)] bg-[var(--primary)] text-white"
+                                : "border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-alt)]"
+                            }`}
+                          >
+                            {mt === "singles" ? "👤 Singles" : "👥 Doubles"}
+                          </button>
                         ))}
-                    </select>
+                      </div>
+                    </div>
+
+                    {bmMatchType === "singles" ? (
+                      /* ── Singles: Player picker (no teams) ── */
+                      <>
+                        <BadmintonPlayerPicker
+                          label="Player A — Select 1 player"
+                          players={allPlayers}
+                          selected={bmSideA}
+                          max={1}
+                          excluded={bmSideB}
+                          onChange={setBmSideA}
+                        />
+                        <BadmintonPlayerPicker
+                          label="Player B — Select 1 player"
+                          players={allPlayers}
+                          selected={bmSideB}
+                          max={1}
+                          excluded={bmSideA}
+                          onChange={setBmSideB}
+                        />
+                      </>
+                    ) : (
+                      /* ── Doubles: Team selectors (players auto-derived) ── */
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text)] mb-1.5">Team A</label>
+                          <select
+                            value={bmTeamAId}
+                            onChange={(e) => setBmTeamAId(e.target.value)}
+                            className="input-field"
+                            required
+                          >
+                            <option value="">Select team</option>
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          {bmTeamAId && (
+                            <div className="mt-1 text-xs text-[var(--text-muted)]">
+                              Players: {allPlayers
+                                .filter((p) => p.team_id === bmTeamAId || p.sold_team_id === bmTeamAId)
+                                .slice(0, 2)
+                                .map((p) => p.name)
+                                .join(" & ") || "No players"}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[var(--text)] mb-1.5">Team B</label>
+                          <select
+                            value={bmTeamBId}
+                            onChange={(e) => setBmTeamBId(e.target.value)}
+                            className="input-field"
+                            required
+                          >
+                            <option value="">Select team</option>
+                            {teams.filter((t) => t.id !== bmTeamAId).map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          {bmTeamBId && (
+                            <div className="mt-1 text-xs text-[var(--text-muted)]">
+                              Players: {allPlayers
+                                .filter((p) => p.team_id === bmTeamBId || p.sold_team_id === bmTeamBId)
+                                .slice(0, 2)
+                                .map((p) => p.name)
+                                .join(" & ") || "No players"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Scoring Config */}
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 space-y-3">
+                      <h4 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                        ⚙️ Scoring Rules
+                      </h4>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Points per Set</label>
+                          <input
+                            type="number"
+                            min={5}
+                            max={50}
+                            value={bmPointsPerSet}
+                            onChange={(e) => setBmPointsPerSet(parseInt(e.target.value) || 21)}
+                            className="input-field text-center"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Sets to Win</label>
+                          <select
+                            value={bmSetsToWin}
+                            onChange={(e) => setBmSetsToWin(parseInt(e.target.value))}
+                            className="input-field text-center"
+                          >
+                            <option value={1}>1 (Best of 1)</option>
+                            <option value={2}>2 (Best of 3)</option>
+                            <option value={3}>3 (Best of 5)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Point Cap</label>
+                          <input
+                            type="number"
+                            min={bmPointsPerSet}
+                            max={99}
+                            value={bmPointCap}
+                            onChange={(e) => setBmPointCap(parseInt(e.target.value) || 30)}
+                            className="input-field text-center"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        Deuce at {bmPointsPerSet - 1}-{bmPointsPerSet - 1}: win by 2 until cap of {bmPointCap}. Golden point at {bmPointCap - 1}-{bmPointCap - 1}.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  /* ── Standard: Team-based form ── */
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label
+                          htmlFor="m-teamA"
+                          className="block text-sm font-medium text-[var(--text)] mb-1.5"
+                        >
+                          Team A
+                        </label>
+                        <select
+                          id="m-teamA"
+                          value={teamAId}
+                          onChange={(e) => setTeamAId(e.target.value)}
+                          className="input-field"
+                          required
+                        >
+                          <option value="">Select team</option>
+                          {teams.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label
+                          htmlFor="m-teamB"
+                          className="block text-sm font-medium text-[var(--text)] mb-1.5"
+                        >
+                          Team B
+                        </label>
+                        <select
+                          id="m-teamB"
+                          value={teamBId}
+                          onChange={(e) => setTeamBId(e.target.value)}
+                          className="input-field"
+                          required
+                        >
+                          <option value="">Select team</option>
+                          {teams
+                            .filter((t) => t.id !== teamAId)
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+                    {tournament?.sport === "football" && (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 space-y-3">
+                        <h4 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                          ⚙️ Match Settings
+                        </h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                              Players on Field (per team)
+                            </label>
+                            <input
+                              type="number"
+                              min={5}
+                              max={11}
+                              value={fbPlayersPerTeam}
+                              onChange={(e) => setFbPlayersPerTeam(parseInt(e.target.value) || 11)}
+                              className="input-field max-w-[120px]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                              Match Duration (minutes)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={fbMatchDuration}
+                              onChange={(e) => setFbMatchDuration(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="input-field max-w-[120px]"
+                            />
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Half = {Math.floor(fbMatchDuration / 2)} min</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label
-                      htmlFor="m-time"
-                      className="block text-sm font-medium text-[var(--text)] mb-1.5"
-                    >
-                      Start Time
-                    </label>
-                    <input
-                      id="m-time"
-                      type="datetime-local"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className="input-field"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="m-venue"
-                      className="block text-sm font-medium text-[var(--text)] mb-1.5"
-                    >
-                      Venue
-                    </label>
-                    <input
-                      id="m-venue"
-                      type="text"
-                      value={venue}
-                      onChange={(e) => setVenue(e.target.value)}
-                      className="input-field"
-                    />
-                  </div>
-                </div>
+                )}
+
                 <div className="flex gap-3">
                   <button
                     type="submit"
@@ -436,26 +715,31 @@ export default function MatchesPage() {
               {matches.map((match) => {
                 const tA = getTeam(match.team_a_id);
                 const tB = getTeam(match.team_b_id);
+                const bmSettings = (match.settings as any);
+                const bmPlayers = bmSettings?.badminton_players;
+                const bmType = bmSettings?.match_type;
+                // For badminton, show player names; otherwise team names
+                const sideALabel = bmPlayers
+                  ? bmPlayers.side_a.map((p: any) => p.name).join(" & ")
+                  : tA?.name ?? "?";
+                const sideBLabel = bmPlayers
+                  ? bmPlayers.side_b.map((p: any) => p.name).join(" & ")
+                  : tB?.name ?? "?";
                 return (
                   <div key={match.id} className="card">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-2">
                           <StatusBadge status={match.status} />
-                          {match.venue && (
-                            <span className="text-xs text-[var(--text-muted)]">
-                              {match.venue}
+                          {bmType && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--surface-alt)] text-[var(--text-muted)] border border-[var(--border)] capitalize">
+                              🏸 {bmType}
                             </span>
                           )}
                         </div>
                         <p className="font-semibold text-[var(--text)]">
-                          {tA?.name ?? "?"} vs {tB?.name ?? "?"}
+                          {sideALabel} vs {sideBLabel}
                         </p>
-                        {match.start_time && (
-                          <p className="text-xs text-[var(--text-muted)] mt-1">
-                            {new Date(match.start_time).toLocaleString()}
-                          </p>
-                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
                         {match.status === "scheduled" && (
@@ -554,5 +838,93 @@ function StepIndicator({
       </span>
       {label}
     </button>
+  );
+}
+
+/* ── Badminton Player Picker ─────────────────── */
+function BadmintonPlayerPicker({
+  label,
+  players,
+  selected,
+  max,
+  excluded,
+  onChange,
+}: {
+  label: string;
+  players: Player[];
+  selected: string[];
+  max: number;
+  excluded: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const toggle = (id: string) => {
+    if (selected.includes(id)) {
+      onChange(selected.filter((s) => s !== id));
+    } else if (selected.length < max) {
+      onChange([...selected, id]);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-[var(--text)] mb-2">
+        {label}
+      </label>
+      <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-xl border border-[var(--border)] p-2">
+        {players
+          .filter((p) => !excluded.includes(p.id))
+          .map((p) => {
+            const isSelected = selected.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggle(p.id)}
+                disabled={!isSelected && selected.length >= max}
+                className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all active:scale-[0.98] touch-manipulation ${
+                  isSelected
+                    ? "bg-[var(--primary)]/10 border border-[var(--primary)]/30"
+                    : "bg-[var(--surface)] border border-transparent hover:bg-[var(--surface-alt)] disabled:opacity-40"
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                    isSelected
+                      ? "border-[var(--primary)] bg-[var(--primary)]"
+                      : "border-[var(--border)]"
+                  }`}
+                >
+                  {isSelected && (
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                </div>
+                <span className="font-medium text-sm text-[var(--text)]">
+                  {p.name}
+                </span>
+                <span className="text-xs text-[var(--text-muted)] ml-auto">
+                  {p.role}
+                </span>
+              </button>
+            );
+          })}
+        {players.filter((p) => !excluded.includes(p.id)).length === 0 && (
+          <p className="text-xs text-[var(--text-muted)] text-center py-3">
+            No players available
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

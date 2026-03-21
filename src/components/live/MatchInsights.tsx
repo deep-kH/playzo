@@ -5,6 +5,7 @@ interface MatchInsightsProps {
   matchState: MatchState;
   battingStats: BattingStats[];
   maxOvers: number;
+  stats?: Record<string, any>;
 }
 
 export function MatchInsights({
@@ -12,12 +13,10 @@ export function MatchInsights({
   matchState,
   battingStats,
   maxOvers,
+  stats,
 }: MatchInsightsProps) {
-  const oversFloat = parseFloat(String(innings.total_overs));
-
-  // Projected score (only if 1st innings and > 2 overs bowled)
-  const projected =
-    oversFloat >= 2 ? Math.round((innings.total_runs / oversFloat) * maxOvers) : null;
+  // ✅ Read projected score from stats (computed by backend)
+  const projected = stats?.projected_score ?? null;
 
   // Last wicket
   const outBatters = battingStats

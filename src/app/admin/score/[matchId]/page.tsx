@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase/client";
 export default function AdminScoreRouter() {
   const params = useParams();
   const router = useRouter();
-  const matchId = params.matchId as string;
+  const matchId = params?.matchId as string;
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

@@ -1,21 +1,47 @@
 // src/app/live/matches/[id]/badminton/page.tsx
 "use client";
 
-import React from "react";
 import { useParams } from "next/navigation";
-import { useLiveState } from "@/features/scoring/core/useLiveState";
+import { useLiveMatch } from "@/features/realtime/useLiveMatch";
 import { BadmintonScoreboard } from "@/features/scoring/badminton/components/BadmintonScoreboard";
-import { INITIAL_BADMINTON_STATE } from "@/features/scoring/badminton/types";
+import { BadmintonMatchSummary } from "@/features/scoring/badminton/components/BadmintonMatchSummary";
 import type { BadmintonMatchState } from "@/features/scoring/badminton/types";
+import { INITIAL_BADMINTON_STATE } from "@/features/scoring/badminton/types";
+
+interface PlayerInfo {
+  id: string;
+  name: string;
+}
 
 export default function BadmintonLiveViewer() {
   const params = useParams<{ id: string }>();
-  const matchId = params.id;
+  const matchId = params?.id as string;
 
-  const { state, match, teamAName, teamBName, loading, error } = useLiveState<BadmintonMatchState>({
-    matchId,
-    initialState: INITIAL_BADMINTON_STATE,
-  });
+  const { state: lsState, match, teamAName, teamBName, loading, error } =
+    useLiveMatch<BadmintonMatchState>({
+      matchId,
+      initialState: INITIAL_BADMINTON_STATE,
+    });
+
+  // Read player info from match.settings.badminton_players (set during match creation)
+  const bmPlayers = (match?.settings as any)?.badminton_players;
+  const bmMatchType = (match?.settings as any)?.match_type || "singles";
+  const bmPointsPerSet = (match?.settings as any)?.points_per_set;
+  const bmSetsToWin = (match?.settings as any)?.sets_to_win;
+  const bmPointCap = (match?.settings as any)?.point_cap;
+  
+  // If the DB state is completely uninitialized (no events yet), override defaults
+  const isUninitialized = !lsState.last_event_text;
+  const state = { 
+    ...lsState, 
+    match_type: isUninitialized ? bmMatchType : lsState.match_type,
+    ...(isUninitialized && bmPointsPerSet ? { points_per_set: bmPointsPerSet } : {}),
+    ...(isUninitialized && bmSetsToWin ? { sets_to_win: bmSetsToWin } : {}),
+    ...(isUninitialized && bmPointCap ? { point_cap: bmPointCap } : {}),
+  } as BadmintonMatchState;
+
+  const teamAPlayers: PlayerInfo[] = bmPlayers?.side_a ?? [];
+  const teamBPlayers: PlayerInfo[] = bmPlayers?.side_b ?? [];
 
   if (loading) {
     return (
@@ -30,8 +56,12 @@ export default function BadmintonLiveViewer() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 p-8">
         <div className="text-4xl">⚠️</div>
-        <h2 className="text-xl font-bold text-[var(--text)]">Unable to Load Match</h2>
-        <p className="text-[var(--text-muted)] text-sm max-w-sm text-center">{error}</p>
+        <h2 className="text-xl font-bold text-[var(--text)]">
+          Unable to Load Match
+        </h2>
+        <p className="text-[var(--text-muted)] text-sm max-w-sm text-center">
+          {error}
+        </p>
       </div>
     );
   }
@@ -40,37 +70,45 @@ export default function BadmintonLiveViewer() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 p-8">
         <div className="text-4xl">🏸</div>
-        <h2 className="text-xl font-bold text-[var(--text)]">Match Not Found</h2>
-        <p className="text-[var(--text-muted)] text-sm">This match does not exist or has been removed.</p>
+        <h2 className="text-xl font-bold text-[var(--text)]">
+          Match Not Found
+        </h2>
+        <p className="text-[var(--text-muted)] text-sm">
+          This match does not exist.
+        </p>
       </div>
     );
   }
 
-  // Match exists but not started
-  if (state.status === "scheduled") {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center p-4">
-        <div className="text-center space-y-4 max-w-sm">
-          <div className="text-5xl">🏸</div>
-          <h2 className="text-2xl font-bold text-[var(--text)]">{teamAName} vs {teamBName}</h2>
-          <p className="text-[var(--text-muted)]">Match has not started yet. Please check back soon.</p>
-          <div className="flex items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
-            <div className="w-2 h-2 rounded-full bg-[var(--warning)] animate-pulse" />
-            Waiting for first serve...
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const isEnded = state.status === "completed" || state.status === "incomplete";
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex items-start justify-center p-4 pt-10">
-      <div className="w-full max-w-3xl">
-        <BadmintonScoreboard
-          state={state}
-          teamAName={teamAName}
-          teamBName={teamBName}
-        />
+    <div className="min-h-screen bg-[var(--bg)]">
+      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
+            🏸 Badminton {isEnded ? "Result" : "Live"}
+          </h1>
+        </div>
+
+        {isEnded ? (
+          <BadmintonMatchSummary
+            state={state}
+            teamAName={teamAName}
+            teamBName={teamBName}
+            teamAPlayers={teamAPlayers}
+            teamBPlayers={teamBPlayers}
+          />
+        ) : (
+          <BadmintonScoreboard
+            state={state}
+            teamAName={teamAName}
+            teamBName={teamBName}
+            teamAPlayers={teamAPlayers}
+            teamBPlayers={teamBPlayers}
+          />
+        )}
       </div>
     </div>
   );

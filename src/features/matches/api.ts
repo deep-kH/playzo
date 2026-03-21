@@ -6,7 +6,7 @@ export async function listMatchesByTournamentId(
 ): Promise<Match[]> {
   const { data, error } = await supabase
     .from("ls_matches")
-    .select("*")
+    .select("*, ls_tournaments ( sport )")
     .eq("tournament_id", tournamentId)
     .order("start_time", { ascending: true });
 
@@ -17,7 +17,7 @@ export async function listMatchesByTournamentId(
 export async function listLiveMatches(): Promise<Match[]> {
   const { data, error } = await supabase
     .from("ls_matches")
-    .select("*")
+    .select("*, ls_tournaments ( sport )")
     .eq("status", "live")
     .order("start_time", { ascending: true });
 
@@ -27,8 +27,8 @@ export async function listLiveMatches(): Promise<Match[]> {
 
 export async function createMatch(input: {
   tournament_id: string;
-  team_a_id: string;
-  team_b_id: string;
+  team_a_id?: string | null;
+  team_b_id?: string | null;
   start_time: string | null;
   venue: string | null;
   settings: Record<string, unknown>;

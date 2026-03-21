@@ -1,609 +1,1031 @@
-// src/features/scoring/football/components/FootballScorerController.tsx
+// ============================================================================
+// FootballScorerController — Complete Rebuild (V5)
+// The main admin scoring orchestrator for football matches.
+// ============================================================================
 "use client";
 
-import React, { useState } from "react";
-import { processGenericEvent } from "../../api";
-import type { FootballEventType, FootballMatchState, FootballTeam, MatchPhase, FootballMatchEvent, PenaltyKick } from "../types";
-import { phaseLabel } from "../types";
-import { getPhaseActions, useFootballClock } from "../hooks";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import type { Player } from "@/lib/types/database";
+import type { FootballMatchState, FootballMatchEvent } from "../types";
+import {
+  isPrimaryEvent,
+  getPhaseLabel,
+  getEventIcon,
+  PRIMARY_EVENT_TYPES,
+  MICRO_EVENT_TYPES,
+} from "../types";
+import { useFootballClock, getPhaseActions, isPlayerSentOff } from "../hooks";
+import * as engine from "../engine";
 
-// ─── Shared styles ──────────────────────────────────────────────────────
-const btn = {
-  primary:
-    "flex items-center justify-center gap-2 h-14 px-5 rounded-xl font-semibold text-white bg-[var(--success)] hover:brightness-110 active:scale-95 touch-manipulation disabled:opacity-50 transition-all",
-  secondary:
-    "flex items-center justify-center gap-2 h-14 px-5 rounded-xl font-semibold border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-alt)] active:scale-95 touch-manipulation disabled:opacity-50 transition-all",
-  danger:
-    "flex items-center justify-center gap-2 h-14 px-5 rounded-xl font-semibold text-white bg-[var(--danger)] hover:brightness-110 active:scale-95 touch-manipulation disabled:opacity-50 transition-all",
-  quickAction: (color: string) =>
-    `flex flex-col items-center justify-center gap-1 h-20 rounded-xl font-semibold border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-alt)] hover:border-[var(--${color})] active:scale-95 touch-manipulation disabled:opacity-50 transition-all`,
-  teamEvent:
-    "flex items-center justify-center gap-2 h-12 rounded-xl font-medium bg-[var(--surface-alt)] text-[var(--text)] border border-[var(--border)] hover:brightness-95 active:scale-95 touch-manipulation disabled:opacity-50 transition-all",
-};
-
-// ─── Section wrapper ────────────────────────────────────────────────────
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden shadow-[0_2px_8px_var(--shadow)]">
-      <div className="px-4 py-3 bg-[var(--surface-alt)] border-b border-[var(--border)]">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
-          {title}
-        </h3>
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  );
+// ── Types ──
+interface Props {
+  match: any;
+  state: FootballMatchState;
+  teamAName: string;
+  teamBName: string;
+  teamAPlayers: Player[];
+  teamBPlayers: Player[];
+  teamALogo?: string | null;
+  teamBLogo?: string | null;
 }
 
-// ─── Main Controller ────────────────────────────────────────────────────
+type ActionFlow =
+  | null
+  | { type: "goal"; team: "team_a" | "team_b"; player: Player; step: "select_assist" }
+  | { type: "shot_on"; team: "team_a" | "team_b"; player: Player; step: "select_restart" }
+  | { type: "shot_off"; team: "team_a" | "team_b"; player: Player; step: "select_restart" }
+  | { type: "foul"; team: "team_a" | "team_b"; player: Player; step: "select_restart" | "select_fouled" | "select_card" ; restart?: string; fouledPlayer?: Player }
+  | { type: "substitution"; team: "team_a" | "team_b"; benchPlayer: Player; step: "select_field_player" };
+
+// ── Main Component ──
 export function FootballScorerController({
-  matchId,
+  match,
   state,
   teamAName,
   teamBName,
-}: {
-  matchId: string;
-  state: FootballMatchState;
-  teamAName?: string;
-  teamBName?: string;
-}) {
+  teamAPlayers,
+  teamBPlayers,
+  teamALogo,
+  teamBLogo,
+}: Props) {
+  const matchId = match.id;
+  const matchDurationMinutes: number = match.settings?.match_duration_minutes ?? (match.settings?.half_duration_minutes ? match.settings.half_duration_minutes * 2 : 0);
+  const halfDuration = Math.floor(matchDurationMinutes / 2) * 60;
+  const clock = useFootballClock(state, halfDuration);
+  const actions = getPhaseActions(state);
+  const [actionFlow, setActionFlow] = useState<ActionFlow>(null);
+  const [modalPlayer, setModalPlayer] = useState<{ player: Player; team: "team_a" | "team_b" } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeModal, setActiveModal] = useState<null | "goal" | "foul" | "sub" | "stoppage">(null);
-  const [modalTeam, setModalTeam] = useState<FootballTeam>("team_a");
-  const [toast, setToast] = useState<string | null>(null);
+  const [endPromptShown, setEndPromptShown] = useState(false);
+  const [showDrawOptions, setShowDrawOptions] = useState(false);
+  const [extraTimeDuration, setExtraTimeDuration] = useState(15);
 
-  const tA = teamAName ?? "Team A";
-  const tB = teamBName ?? "Team B";
+  // Lineup config — uses players_per_team from match creation
+  const playersPerSide: number = match.settings?.players_per_team ?? match.settings?.players_per_side ?? 11;
+  const lineupConfirmed: boolean = !!match.settings?.lineup_confirmed;
 
-  const dispatch = async (type: FootballEventType, payload: Record<string, unknown> = {}) => {
-    // Confirm critical actions
-    const needsConfirm = ["match_end", "red_card", "full_time", "half_time"].includes(type);
-    if (needsConfirm && !confirm(`Confirm: ${type.replace(/_/g, " ").toUpperCase()}?`)) return;
+  // Get lineup from match settings
+  const startingLineupA: string[] = match.settings?.starting_lineup_a || [];
+  const startingLineupB: string[] = match.settings?.starting_lineup_b || [];
 
-    try {
-      setLoading(true);
-      await processGenericEvent(matchId, type, payload as any);
-      showToast(`${type.replace(/_/g, " ")} recorded`);
-    } catch (err: any) {
-      alert("Action Failed: " + err.message);
-    } finally {
-      setLoading(false);
-      setActiveModal(null);
+  // Derive CURRENT lineup by replaying substitution events on top of initial lineup
+  const { currentLineupA, currentLineupB } = useMemo(() => {
+    const lineupA = new Set(startingLineupA);
+    const lineupB = new Set(startingLineupB);
+    for (const event of (state.events || [])) {
+      if (event.type === 'substitution') {
+        const targetSet = event.team === 'team_a' ? lineupA : event.team === 'team_b' ? lineupB : null;
+        if (targetSet && event.player_id && event.sub_in_id) {
+          targetSet.delete(event.player_id);  // player going OUT
+          targetSet.add(event.sub_in_id);     // player coming IN
+        }
+      }
     }
-  };
+    return { currentLineupA: lineupA, currentLineupB: lineupB };
+  }, [startingLineupA, startingLineupB, state.events]);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
+  // Separate on-field vs bench using CURRENT lineup (after subs)
+  const onFieldA = useMemo(() => teamAPlayers.filter(p => currentLineupA.has(p.id)), [teamAPlayers, currentLineupA]);
+  const benchA = useMemo(() => teamAPlayers.filter(p => !currentLineupA.has(p.id)), [teamAPlayers, currentLineupA]);
+  const onFieldB = useMemo(() => teamBPlayers.filter(p => currentLineupB.has(p.id)), [teamBPlayers, currentLineupB]);
+  const benchB = useMemo(() => teamBPlayers.filter(p => !currentLineupB.has(p.id)), [teamBPlayers, currentLineupB]);
 
-  const isLive = ["first_half", "second_half", "extra_time_first", "extra_time_second"].includes(state.phase);
-  const isPenalties = state.phase === "penalty_shootout";
+  // Find GK for each team — prefer saved GK from lineup setup, fallback to role-based
+  const savedGkAId: string | null = match.settings?.gk_a_id || null;
+  const savedGkBId: string | null = match.settings?.gk_b_id || null;
+  const gkA = useMemo(() => {
+    if (savedGkAId) return onFieldA.find(p => p.id === savedGkAId) || onFieldA[0];
+    return onFieldA.find(p => p.role?.toLowerCase() === 'gk' || p.role?.toLowerCase() === 'goalkeeper') || onFieldA[0];
+  }, [onFieldA, savedGkAId]);
+  const gkB = useMemo(() => {
+    if (savedGkBId) return onFieldB.find(p => p.id === savedGkBId) || onFieldB[0];
+    return onFieldB.find(p => p.role?.toLowerCase() === 'gk' || p.role?.toLowerCase() === 'goalkeeper') || onFieldB[0];
+  }, [onFieldB, savedGkBId]);
 
+  // Auto-prompt when stoppage time is up
+  useEffect(() => {
+    if (clock.shouldPromptEnd && !endPromptShown) {
+      setEndPromptShown(true);
+    }
+  }, [clock.shouldPromptEnd, endPromptShown]);
+
+  // Reset prompt when phase changes
+  useEffect(() => {
+    setEndPromptShown(false);
+  }, [state.phase]);
+
+  // ── Action Handlers ──
+  const wrap = useCallback(async (fn: () => Promise<void>) => {
+    setLoading(true);
+    try { await fn(); } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+  }, []);
+
+  const handlePhaseControl = useCallback((action: string) => {
+    wrap(async () => {
+      switch (action) {
+        case "start": await engine.startMatch(matchId); break;
+        case "pause": await engine.pauseMatch(matchId); break;
+        case "resume": await engine.resumeMatch(matchId); break;
+        case "end_half":
+          if (state.phase === 'extra_time_first') await engine.endExtraTimeHalf(matchId);
+          else await engine.endHalf(matchId);
+          break;
+        case "start_second":
+          if (state.phase === 'extra_time_half') await engine.startExtraTimeSecond(matchId);
+          else await engine.startSecondHalf(matchId);
+          break;
+        case "full_time": await engine.endFullTime(matchId); break;
+        case "extra_time": await engine.startExtraTime(matchId, extraTimeDuration); break;
+        case "penalties": await engine.startPenaltyShootout(matchId); break;
+        case "end_match": await engine.endMatch(matchId); break;
+      }
+    });
+  }, [matchId, wrap, state.phase, extraTimeDuration]);
+
+  // ── On-field player clicked ──
+  const handlePlayerClick = useCallback((player: Player, team: "team_a" | "team_b") => {
+    if (!actions.canLogEvents) return;
+    if (isPlayerSentOff(state, player.id)) return;
+
+    // If in substitution flow → this is the field player to sub out
+    if (actionFlow?.type === "substitution" && actionFlow.step === "select_field_player" && actionFlow.team === team) {
+      wrap(async () => {
+        await engine.logSubstitution(matchId, {
+          team,
+          player_id: player.id,
+          player_name: player.name,
+          sub_in_id: actionFlow.benchPlayer.id,
+          sub_in_name: actionFlow.benchPlayer.name,
+          sub_out_name: player.name,
+        });
+        setActionFlow(null);
+      });
+      return;
+    }
+
+    // If in goal flow → this player is the assist
+    if (actionFlow?.type === "goal" && actionFlow.step === "select_assist" && actionFlow.team === team) {
+      wrap(async () => {
+        const opposingGk = team === "team_a" ? gkB : gkA;
+        await engine.logGoal(matchId, {
+          team,
+          player_id: actionFlow.player.id,
+          player_name: actionFlow.player.name,
+          photo_url: actionFlow.player.photo_url || undefined,
+          assist_player_id: player.id,
+          assist_player_name: player.name,
+          opposing_gk_id: opposingGk?.id,
+        });
+        setActionFlow(null);
+      });
+      return;
+    }
+
+    // If in foul → select fouled player
+    if (actionFlow?.type === "foul" && actionFlow.step === "select_fouled" && actionFlow.team !== team) {
+      setActionFlow({ ...actionFlow, step: "select_card", fouledPlayer: player });
+      return;
+    }
+
+    // Otherwise → open the action modal
+    setModalPlayer({ player, team });
+  }, [actions.canLogEvents, state, actionFlow, matchId, wrap, gkA, gkB]);
+
+  // ── Bench player clicked → start substitution flow ──
+  const handleBenchClick = useCallback((player: Player, team: "team_a" | "team_b") => {
+    if (!actions.canLogEvents) return;
+    setActionFlow({ type: "substitution", team, benchPlayer: player, step: "select_field_player" });
+    setModalPlayer(null);
+  }, [actions.canLogEvents]);
+
+  // ── Action modal selection ──
+  const handleActionSelect = useCallback((actionType: string) => {
+    if (!modalPlayer) return;
+    const { player, team } = modalPlayer;
+    setModalPlayer(null);
+
+    // MICRO actions → log instantly
+    if ((MICRO_EVENT_TYPES as readonly string[]).includes(actionType)) {
+      wrap(async () => {
+        await engine.logMicroAction(matchId, actionType, team, player.id, player.name);
+      });
+      return;
+    }
+
+    // PRIMARY actions → start cascading flow
+    switch (actionType) {
+      case "goal":
+        setActionFlow({ type: "goal", team, player, step: "select_assist" });
+        break;
+      case "shot_on_target":
+        setActionFlow({ type: "shot_on", team, player, step: "select_restart" });
+        break;
+      case "shot_off_target":
+        setActionFlow({ type: "shot_off", team, player, step: "select_restart" });
+        break;
+      case "foul":
+        setActionFlow({ type: "foul", team, player, step: "select_restart" });
+        break;
+      case "yellow_card":
+        wrap(async () => { await engine.logYellowCard(matchId, team, player.id, player.name); });
+        break;
+      case "red_card":
+        wrap(async () => { await engine.logRedCard(matchId, team, player.id, player.name); });
+        break;
+    }
+  }, [modalPlayer, matchId, wrap]);
+
+  // ── Team actions (corner, goal kick, throw in) ──
+  const handleTeamAction = useCallback((team: string, type: string) => {
+    if (!actions.canLogEvents) return;
+    wrap(async () => {
+      switch (type) {
+        case "corner": await engine.logCorner(matchId, team); break;
+        case "goal_kick": await engine.logGoalKick(matchId, team); break;
+        case "throw_in": await engine.logThrowIn(matchId, team); break;
+      }
+    });
+  }, [matchId, wrap, actions.canLogEvents]);
+
+  // ── Stoppage stepper ──
+  const handleAddStoppage = useCallback(() => {
+    wrap(async () => { await engine.addStoppage(matchId, 1); });
+  }, [matchId, wrap]);
+
+  // ── Undo ──
+  const handleUndo = useCallback(() => {
+    wrap(async () => { await engine.undoLastEvent(matchId); });
+  }, [matchId, wrap]);
+
+  // ── Penalty shootout ──
+  const handlePenalty = useCallback((team: string, playerId: string, playerName: string, scored: boolean) => {
+    wrap(async () => {
+      if (scored) await engine.logPenaltyGoal(matchId, team, playerId, playerName);
+      else await engine.logPenaltyMiss(matchId, team, playerId, playerName);
+    });
+  }, [matchId, wrap]);
+
+  // Check if match is drawn at full time
+  const isDrawn = state.team_a_stats.goals === state.team_b_stats.goals;
+
+  // ── RENDER ──
   return (
-    <div className="space-y-5">
-      {/* ── Toast ──────────────────────────────────────── */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[var(--text)] text-[var(--surface)] px-5 py-3 rounded-xl text-sm font-semibold shadow-xl animate-[fadeIn_0.2s_ease]">
-          {toast}
-        </div>
-      )}
-
-      {/* ── §3  Match Control Panel ──────────────────── */}
-      <Section title="Match Controls">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
-            Phase
-          </span>
-          <span className="text-xs font-mono font-bold text-[var(--primary)] uppercase">
-            {phaseLabel(state.phase)}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {getPhaseActions(state.phase, state.clock_running).map((a) => (
-            <button
-              key={a.event}
-              disabled={loading}
-              onClick={() => {
-                if (a.event === "extra_time_added") {
-                  setActiveModal("stoppage");
-                } else {
-                  dispatch(a.event as FootballEventType);
-                }
-              }}
-              className={`flex-1 min-w-[140px] ${btn[a.variant]}`}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      {/* ── §5  Quick Actions Panel ──────────────────── */}
-      {isLive && (
-        <Section title="Quick Actions">
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            <button disabled={loading} onClick={() => { setModalTeam("team_a"); setActiveModal("goal"); }} className={btn.quickAction("success")}>
-              <span className="text-xl">⚽</span><span className="text-xs">Goal</span>
-            </button>
-            <button disabled={loading} onClick={() => dispatch("yellow_card", { team: "team_a" })} className={btn.quickAction("warning")}>
-              <span className="text-xl">🟨</span><span className="text-xs">Yellow</span>
-            </button>
-            <button disabled={loading} onClick={() => dispatch("red_card", { team: "team_a" })} className={btn.quickAction("danger")}>
-              <span className="text-xl">🟥</span><span className="text-xs">Red</span>
-            </button>
-            <button disabled={loading} onClick={() => { setModalTeam("team_a"); setActiveModal("foul"); }} className={btn.quickAction("warning")}>
-              <span className="text-xl">⚠</span><span className="text-xs">Foul</span>
-            </button>
-            <button disabled={loading} onClick={() => dispatch("offside", { team: "team_a" })} className={btn.quickAction("danger")}>
-              <span className="text-xl">🚫</span><span className="text-xs">Offside</span>
-            </button>
-            <button disabled={loading} onClick={() => { setModalTeam("team_a"); setActiveModal("sub"); }} className={btn.quickAction("primary")}>
-              <span className="text-xl">🔄</span><span className="text-xs">Sub</span>
-            </button>
+    <div className="space-y-4">
+      {/* ═══════════════════ HEADER: Score + Clock + Controls ═══════════════════ */}
+      <div className="relative overflow-hidden rounded-2xl border border-[var(--border)]"
+        style={{ background: 'linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%)' }}>
+        {/* Score */}
+        <div className="flex items-center justify-center gap-6 py-6 px-4">
+          <div className="flex items-center gap-3">
+            {teamALogo ? <img src={teamALogo} className="w-10 h-10 rounded-full object-cover" alt="" /> :
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center font-bold text-emerald-400">{teamAName.charAt(0)}</div>}
+            <span className="font-bold text-sm uppercase tracking-wider text-[var(--text)]">{teamAName}</span>
           </div>
-        </Section>
+          <div className="flex flex-col items-center">
+            <div className="text-5xl font-black tabular-nums tracking-tight text-[var(--text)]">
+              {state.team_a_stats.goals} – {state.team_b_stats.goals}
+            </div>
+            <div className="mt-1 text-lg font-mono font-semibold text-[var(--primary)]">
+              {clock.display}
+            </div>
+            {/* Show allotted stoppage when in stoppage */}
+            {clock.inStoppage && clock.allottedStoppageMinutes > 0 && (
+              <div className={`text-xs font-bold tabular-nums mt-0.5 ${clock.shouldPromptEnd ? 'text-red-400 animate-pulse' : 'text-amber-400'}`}>
+                {clock.stoppageDisplay} / {clock.allottedStoppageDisplay} stoppage
+              </div>
+            )}
+            {clock.inStoppage && clock.allottedStoppageMinutes === 0 && (
+              <div className="text-xs font-bold text-red-400 animate-pulse mt-0.5">
+                ⚠ No stoppage allotted — Add time or end half
+              </div>
+            )}
+            <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-widest mt-0.5">
+              {getPhaseLabel(state.phase)}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-sm uppercase tracking-wider text-[var(--text)]">{teamBName}</span>
+            {teamBLogo ? <img src={teamBLogo} className="w-10 h-10 rounded-full object-cover" alt="" /> :
+              <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center font-bold text-amber-400">{teamBName.charAt(0)}</div>}
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-wrap items-center justify-center gap-2 px-4 pb-4">
+          {actions.canStart && lineupConfirmed && <ControlBtn label="▶ Start Match" onClick={() => handlePhaseControl("start")} color="emerald" />}
+          {actions.canPause && <ControlBtn label="⏸ Pause" onClick={() => handlePhaseControl("pause")} />}
+          {actions.canResume && <ControlBtn label="▶ Resume" onClick={() => handlePhaseControl("resume")} color="emerald" />}
+          {actions.canEndHalf && <ControlBtn label="⏹ End Half" onClick={() => handlePhaseControl("end_half")} color="amber" />}
+          {actions.canStartSecondHalf && <ControlBtn label="▶ Start 2nd Half" onClick={() => handlePhaseControl("start_second")} color="emerald" />}
+          {actions.canEndFullTime && <ControlBtn label="⏹ End Full Time" onClick={() => handlePhaseControl("full_time")} color="amber" />}
+          {actions.canAddStoppage && <ControlBtn label={`+1 Stoppage (${state.added_extra_time_minutes}m)`} onClick={handleAddStoppage} />}
+          {actions.canEndMatch && !isDrawn && <ControlBtn label="🏁 End Match" onClick={() => handlePhaseControl("end_match")} color="red" />}
+          {(state.phase === 'full_time' && isDrawn) && (
+            <>
+              <ControlBtn label="⏱ Extra Time" onClick={() => setShowDrawOptions(true)} color="amber" />
+              <ControlBtn label="⚽ Penalties" onClick={() => handlePhaseControl("penalties")} color="red" />
+            </>
+          )}
+          {actions.isShootoutMode && <ControlBtn label="🏁 End Match" onClick={() => handlePhaseControl("end_match")} color="red" />}
+        </div>
+      </div>
+
+      {/* ═══════════════════ LINEUP SETUP (PRE-MATCH) ═══════════════════ */}
+      {actions.canStart && !lineupConfirmed && (
+        <LineupSetup
+          matchId={matchId}
+          teamAName={teamAName}
+          teamBName={teamBName}
+          teamAPlayers={teamAPlayers}
+          teamBPlayers={teamBPlayers}
+          playersPerSide={playersPerSide}
+          initialLineupA={startingLineupA}
+          initialLineupB={startingLineupB}
+          loading={loading}
+          onConfirm={async (lineupA: string[], lineupB: string[], gkAId: string | null, gkBId: string | null) => {
+            setLoading(true);
+            try {
+              await engine.saveLineup(matchId, lineupA, lineupB, gkAId, gkBId);
+              // Force page reload to get updated match settings
+              window.location.reload();
+            } catch (e: any) {
+              alert(e.message);
+            } finally {
+              setLoading(false);
+            }
+          }}
+        />
       )}
 
-      {/* ── §6  Player-Level Actions (Team A / Team B) ── */}
-      {isLive && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <TeamActionPanel
-            title={tA}
-            teamId="team_a"
-            loading={loading}
-            onGoal={() => { setModalTeam("team_a"); setActiveModal("goal"); }}
-            onFoul={() => { setModalTeam("team_a"); setActiveModal("foul"); }}
-            onSub={() => { setModalTeam("team_a"); setActiveModal("sub"); }}
-            dispatch={dispatch}
+      {/* ═══════════════════ AUTO-PROMPT MODAL ═══════════════════ */}
+      {endPromptShown && actions.canEndHalf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--surface)] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-[var(--border)] space-y-4 text-center">
+            <div className="text-3xl">⏱️</div>
+            <h3 className="text-lg font-bold text-[var(--text)]">Stoppage Time Ended</h3>
+            <p className="text-sm text-[var(--text-muted)]">The added stoppage time has elapsed. End the half?</p>
+            <div className="flex gap-3">
+              <button onClick={() => { setEndPromptShown(false); handlePhaseControl("end_half"); }}
+                className="flex-1 btn-primary rounded-xl py-3 font-bold">End Half</button>
+              <button onClick={() => setEndPromptShown(false)}
+                className="flex-1 btn-secondary rounded-xl py-3 font-bold">Continue</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ EXTRA TIME DURATION MODAL ═══════════════════ */}
+      {showDrawOptions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[var(--surface)] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-[var(--border)] space-y-4 text-center">
+            <h3 className="text-lg font-bold text-[var(--text)]">Extra Time Duration</h3>
+            <p className="text-sm text-[var(--text-muted)]">Set the duration per half (minutes)</p>
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={() => setExtraTimeDuration(Math.max(5, extraTimeDuration - 5))}
+                className="w-10 h-10 rounded-full bg-[var(--surface-alt)] border border-[var(--border)] font-bold text-lg">−</button>
+              <span className="text-3xl font-bold tabular-nums text-[var(--text)]">{extraTimeDuration}</span>
+              <button onClick={() => setExtraTimeDuration(extraTimeDuration + 5)}
+                className="w-10 h-10 rounded-full bg-[var(--surface-alt)] border border-[var(--border)] font-bold text-lg">+</button>
+            </div>
+            <button onClick={() => { setShowDrawOptions(false); handlePhaseControl("extra_time"); }}
+              className="w-full btn-primary rounded-xl py-3 font-bold">Start Extra Time</button>
+            <button onClick={() => setShowDrawOptions(false)}
+              className="w-full btn-secondary rounded-xl py-2 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ ACTION FLOW BANNER ═══════════════════ */}
+      {actionFlow && (
+        <div className="rounded-xl border-2 border-dashed border-[var(--primary)] bg-[var(--surface-alt)] p-4 text-center animate-fade-in">
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-sm font-bold text-[var(--primary)] uppercase tracking-wide">
+              {actionFlow.type === "goal" && actionFlow.step === "select_assist" && `⚽ ${actionFlow.player.name} scored! Select assist or:`}
+              {actionFlow.type === "shot_on" && `🎯 ${actionFlow.player.name} shot on target. Select restart:`}
+              {actionFlow.type === "shot_off" && `💨 ${actionFlow.player.name} shot off target. Select restart:`}
+              {actionFlow.type === "foul" && actionFlow.step === "select_restart" && `🚨 ${actionFlow.player.name} fouled. Select restart:`}
+              {actionFlow.type === "foul" && actionFlow.step === "select_fouled" && `🚨 Select the fouled player from the opponent:`}
+              {actionFlow.type === "foul" && actionFlow.step === "select_card" && `🃏 Select card for ${actionFlow.player.name}:`}
+              {actionFlow.type === "substitution" && `🔄 ${actionFlow.benchPlayer.name} coming in. Tap the on-field player to sub out:`}
+            </span>
+            <button onClick={() => setActionFlow(null)} className="text-xs text-[var(--danger)] font-bold hover:underline">✕ Cancel</button>
+          </div>
+
+          {/* Flow-specific options */}
+          <div className="flex flex-wrap justify-center gap-2 mt-3">
+            {actionFlow.type === "goal" && actionFlow.step === "select_assist" && (
+              <FlowBtn label="No Assist" onClick={() => {
+                const team = actionFlow.team;
+                const opposingGk = team === "team_a" ? gkB : gkA;
+                wrap(async () => {
+                  await engine.logGoal(matchId, {
+                    team,
+                    player_id: actionFlow.player.id,
+                    player_name: actionFlow.player.name,
+                    photo_url: actionFlow.player.photo_url || undefined,
+                    opposing_gk_id: opposingGk?.id,
+                  });
+                  setActionFlow(null);
+                });
+              }} />
+            )}
+            {(actionFlow.type === "shot_on" || actionFlow.type === "shot_off") && actionFlow.step === "select_restart" && (
+              <>
+                <FlowBtn label="Corner Kick" onClick={() => {
+                  const team = actionFlow.team;
+                  const opposingGk = team === "team_a" ? gkB : gkA;
+                  wrap(async () => {
+                    if (actionFlow.type === "shot_on") {
+                      await engine.logShotOnTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "corner_kick", opposing_gk_id: opposingGk?.id });
+                    } else {
+                      await engine.logShotOffTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "corner_kick" });
+                    }
+                    setActionFlow(null);
+                  });
+                }} />
+                <FlowBtn label="Goal Kick" onClick={() => {
+                  const team = actionFlow.team;
+                  const opposingGk = team === "team_a" ? gkB : gkA;
+                  wrap(async () => {
+                    if (actionFlow.type === "shot_on") {
+                      await engine.logShotOnTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "goal_kick", opposing_gk_id: opposingGk?.id });
+                    } else {
+                      await engine.logShotOffTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "goal_kick" });
+                    }
+                    setActionFlow(null);
+                  });
+                }} />
+                <FlowBtn label="No Stoppage" onClick={() => {
+                  const team = actionFlow.team;
+                  const opposingGk = team === "team_a" ? gkB : gkA;
+                  wrap(async () => {
+                    if (actionFlow.type === "shot_on") {
+                      await engine.logShotOnTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "none", opposing_gk_id: opposingGk?.id });
+                    } else {
+                      await engine.logShotOffTarget(matchId, { team, player_id: actionFlow.player.id, player_name: actionFlow.player.name, restart: "none" });
+                    }
+                    setActionFlow(null);
+                  });
+                }} />
+              </>
+            )}
+            {actionFlow.type === "foul" && actionFlow.step === "select_restart" && (
+              <>
+                <FlowBtn label="Free Kick" onClick={() => setActionFlow({ ...actionFlow, step: "select_fouled", restart: "free_kick" })} />
+                <FlowBtn label="Advantage" onClick={() => setActionFlow({ ...actionFlow, step: "select_fouled", restart: "advantage" })} />
+                <FlowBtn label="None" onClick={() => setActionFlow({ ...actionFlow, step: "select_fouled", restart: "none" })} />
+              </>
+            )}
+            {actionFlow.type === "foul" && actionFlow.step === "select_fouled" && (
+              <FlowBtn label="Skip (no fouled player)" onClick={() => setActionFlow({ ...actionFlow, step: "select_card" })} />
+            )}
+            {actionFlow.type === "foul" && actionFlow.step === "select_card" && (
+              <>
+                <FlowBtn label="No Card" onClick={() => {
+                  wrap(async () => {
+                    await engine.logFoul(matchId, {
+                      team: actionFlow.team, player_id: actionFlow.player.id, player_name: actionFlow.player.name,
+                      fouled_player_id: actionFlow.fouledPlayer?.id, fouled_player_name: actionFlow.fouledPlayer?.name,
+                      card: "none", restart: actionFlow.restart || "none",
+                    });
+                    setActionFlow(null);
+                  });
+                }} />
+                <FlowBtn label="🟨 Yellow" color="amber" onClick={() => {
+                  wrap(async () => {
+                    await engine.logFoul(matchId, {
+                      team: actionFlow.team, player_id: actionFlow.player.id, player_name: actionFlow.player.name,
+                      fouled_player_id: actionFlow.fouledPlayer?.id, fouled_player_name: actionFlow.fouledPlayer?.name,
+                      card: "yellow", restart: actionFlow.restart || "none",
+                    });
+                    setActionFlow(null);
+                  });
+                }} />
+                <FlowBtn label="🟥 Red" color="red" onClick={() => {
+                  wrap(async () => {
+                    await engine.logFoul(matchId, {
+                      team: actionFlow.team, player_id: actionFlow.player.id, player_name: actionFlow.player.name,
+                      fouled_player_id: actionFlow.fouledPlayer?.id, fouled_player_name: actionFlow.fouledPlayer?.name,
+                      card: "red", restart: actionFlow.restart || "none",
+                    });
+                    setActionFlow(null);
+                  });
+                }} />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PENALTY SHOOTOUT MODE ═══════════════════ */}
+      {actions.isShootoutMode && (
+        <PenaltyPanel
+          teamAName={teamAName} teamBName={teamBName}
+          onFieldA={onFieldA} onFieldB={onFieldB}
+          penalties={state.penalties}
+          onPenalty={handlePenalty}
+        />
+      )}
+
+      {/* ═══════════════════ MAIN SCORING AREA (50/50 SPLIT) ═══════════════════ */}
+      {!actions.isShootoutMode && (
+        <div className="grid grid-cols-2 gap-3">
+          <TeamPanel
+            team="team_a"
+            teamName={teamAName}
+            onFieldPlayers={onFieldA}
+            benchPlayers={benchA}
+            state={state}
+            isActive={actions.canLogEvents}
+            onPlayerClick={handlePlayerClick}
+            onBenchClick={handleBenchClick}
+            onTeamAction={handleTeamAction}
+            activeFlow={actionFlow}
+            accentColor="emerald"
           />
-          <TeamActionPanel
-            title={tB}
-            teamId="team_b"
-            loading={loading}
-            onGoal={() => { setModalTeam("team_b"); setActiveModal("goal"); }}
-            onFoul={() => { setModalTeam("team_b"); setActiveModal("foul"); }}
-            onSub={() => { setModalTeam("team_b"); setActiveModal("sub"); }}
-            dispatch={dispatch}
+          <TeamPanel
+            team="team_b"
+            teamName={teamBName}
+            onFieldPlayers={onFieldB}
+            benchPlayers={benchB}
+            state={state}
+            isActive={actions.canLogEvents}
+            onPlayerClick={handlePlayerClick}
+            onBenchClick={handleBenchClick}
+            onTeamAction={handleTeamAction}
+            activeFlow={actionFlow}
+            accentColor="amber"
           />
         </div>
       )}
 
-      {/* ── §10  Team Events Panel ───────────────────── */}
-      {isLive && (
-        <Section title="Team Events">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {(["team_a", "team_b"] as const).map((t) => (
-              <React.Fragment key={t}>
-                <button disabled={loading} onClick={() => dispatch("corner", { team: t })} className={btn.teamEvent}>
-                  🚩 Corner ({t === "team_a" ? tA : tB})
-                </button>
-              </React.Fragment>
-            ))}
-            {(["team_a", "team_b"] as const).map((t) => (
-              <React.Fragment key={`gk-${t}`}>
-                <button disabled={loading} onClick={() => dispatch("goal_kick", { team: t })} className={btn.teamEvent}>
-                  🥅 Goal Kick ({t === "team_a" ? tA : tB})
-                </button>
-              </React.Fragment>
-            ))}
-            {(["team_a", "team_b"] as const).map((t) => (
-              <React.Fragment key={`ti-${t}`}>
-                <button disabled={loading} onClick={() => dispatch("throw_in", { team: t })} className={btn.teamEvent}>
-                  🤾 Throw-in ({t === "team_a" ? tA : tB})
-                </button>
-              </React.Fragment>
+      {/* ═══════════════════ LOWER AREA: TIMELINE + STATS ═══════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Timeline */}
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-sm uppercase tracking-wider text-[var(--text)]">📋 Timeline</h3>
+            {state.events.length > 0 && (
+              <button onClick={handleUndo} disabled={loading}
+                className="text-xs font-bold text-[var(--danger)] hover:underline disabled:opacity-40">
+                ↩ Undo Last
+              </button>
+            )}
+          </div>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {state.events.length === 0 && <p className="text-xs text-[var(--text-muted)] italic">No events yet</p>}
+            {[...state.events].reverse().map((event, i) => (
+              <div key={event.id || i} className="flex items-center gap-2 text-xs py-1.5 px-2 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)]">
+                <span className="font-mono text-[var(--text-muted)] w-8 text-right">{Math.floor(event.match_time_seconds / 60)}&apos;</span>
+                <span>{getEventIcon(event.type)}</span>
+                <span className="font-semibold text-[var(--text)] truncate flex-1">
+                  {event.player_name || event.type}
+                  {event.assist_name ? ` (assist: ${event.assist_name})` : ''}
+                  {event.details ? ` · ${event.details}` : ''}
+                </span>
+                <span className="text-[var(--text-muted)] text-[10px] uppercase">{event.team === 'team_a' ? teamAName : event.team === 'team_b' ? teamBName : ''}</span>
+              </div>
             ))}
           </div>
-        </Section>
-      )}
+        </div>
 
-      {/* ── §14  Penalty Shootout ─────────────────────── */}
-      {isPenalties && (
-        <PenaltyShootoutPanel
-          teamAName={tA}
-          teamBName={tB}
-          penalties={state.penalties ?? []}
-          loading={loading}
-          dispatch={dispatch}
-        />
-      )}
-
-      {/* ── §11  Timeline Panel ──────────────────────── */}
-      {(state.events?.length ?? 0) > 0 && (
-        <Section title="Timeline">
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {[...(state.events ?? [])].reverse().map((evt, i) => (
-              <TimelineRow key={evt.id ?? i} evt={evt} teamAName={tA} teamBName={tB} />
-            ))}
+        {/* Match Stats */}
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <h3 className="font-bold text-sm uppercase tracking-wider text-[var(--text)] mb-3">📊 Match Stats</h3>
+          <div className="space-y-2">
+            <StatBar label="Shots On" a={state.team_a_stats.shots_on_target} b={state.team_b_stats.shots_on_target} />
+            <StatBar label="Shots Off" a={state.team_a_stats.shots_off_target} b={state.team_b_stats.shots_off_target} />
+            <StatBar label="Corners" a={state.team_a_stats.corners} b={state.team_b_stats.corners} />
+            <StatBar label="Fouls" a={state.team_a_stats.fouls} b={state.team_b_stats.fouls} />
+            <StatBar label="Yellows" a={state.team_a_stats.yellow_cards} b={state.team_b_stats.yellow_cards} />
+            <StatBar label="Reds" a={state.team_a_stats.red_cards} b={state.team_b_stats.red_cards} />
+            <StatBar label="Free Kicks" a={state.team_a_stats.free_kicks} b={state.team_b_stats.free_kicks} />
+            <StatBar label="Goal Kicks" a={state.team_a_stats.goal_kicks} b={state.team_b_stats.goal_kicks} />
+            <StatBar label="Throw Ins" a={state.team_a_stats.throw_ins} b={state.team_b_stats.throw_ins} />
+            <StatBar label="Offsides" a={state.team_a_stats.offsides} b={state.team_b_stats.offsides} />
           </div>
-        </Section>
+        </div>
+      </div>
+
+      {/* ═══════════════════ ACTION MODAL ═══════════════════ */}
+      {modalPlayer && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setModalPlayer(null)}>
+          <div className="bg-[var(--surface)] rounded-t-2xl md:rounded-2xl w-full max-w-md p-5 shadow-2xl border border-[var(--border)] animate-slide-up"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg text-[var(--text)]">{modalPlayer.player.name}</h3>
+                <p className="text-xs text-[var(--text-muted)]">#{modalPlayer.player.jersey_number} · {modalPlayer.team === 'team_a' ? teamAName : teamBName}</p>
+              </div>
+              <button onClick={() => setModalPlayer(null)} className="text-[var(--text-muted)] text-xl hover:text-[var(--text)]">✕</button>
+            </div>
+
+            <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Primary</p>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <ActionBtn label="⚽ Goal" onClick={() => handleActionSelect("goal")} />
+              <ActionBtn label="🎯 Shot On" onClick={() => handleActionSelect("shot_on_target")} />
+              <ActionBtn label="💨 Shot Off" onClick={() => handleActionSelect("shot_off_target")} />
+              <ActionBtn label="🚨 Foul" onClick={() => handleActionSelect("foul")} />
+              <ActionBtn label="🟨 Yellow Card" onClick={() => handleActionSelect("yellow_card")} />
+              <ActionBtn label="🟥 Red Card" onClick={() => handleActionSelect("red_card")} />
+            </div>
+
+            <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Micro</p>
+            <div className="grid grid-cols-3 gap-2">
+              <ActionBtn label="🛡️ Intercept" onClick={() => handleActionSelect("interception")} small />
+              <ActionBtn label="🧱 Block" onClick={() => handleActionSelect("block")} small />
+              <ActionBtn label="🧹 Clear" onClick={() => handleActionSelect("clearance")} small />
+              <ActionBtn label="⚡ Dribble" onClick={() => handleActionSelect("dribble")} small />
+              <ActionBtn label="✨ Chance" onClick={() => handleActionSelect("chance_created")} small />
+              <ActionBtn label="🧤 Save" onClick={() => handleActionSelect("save")} small />
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* ── §15  Quick Stats ─────────────────────────── */}
-      <QuickStats state={state} teamAName={tA} teamBName={tB} />
-
-      {/* ── Modals ──────────────────────────────────── */}
-      {activeModal === "goal" && (
-        <GoalModal
-          team={modalTeam}
-          teamName={modalTeam === "team_a" ? tA : tB}
-          loading={loading}
-          onSubmit={(payload) => dispatch("goal", { team: modalTeam, ...payload })}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
-      {activeModal === "foul" && (
-        <FoulModal
-          team={modalTeam}
-          teamName={modalTeam === "team_a" ? tA : tB}
-          opponentName={modalTeam === "team_a" ? tB : tA}
-          loading={loading}
-          onSubmit={(type, payload) => dispatch(type, { team: modalTeam, ...payload })}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
-      {activeModal === "sub" && (
-        <SubModal
-          team={modalTeam}
-          teamName={modalTeam === "team_a" ? tA : tB}
-          loading={loading}
-          onSubmit={(payload) => dispatch("substitution", { team: modalTeam, ...payload })}
-          onClose={() => setActiveModal(null)}
-        />
-      )}
-      {activeModal === "stoppage" && (
-        <StoppageModal
-          loading={loading}
-          onSubmit={(mins) => dispatch("extra_time_added", { extra_minutes: mins })}
-          onClose={() => setActiveModal(null)}
-        />
+      {loading && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 pointer-events-none">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" />
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Team Action Panel ──────────────────────────────────────────────────
-function TeamActionPanel({
-  title, teamId, loading, onGoal, onFoul, onSub, dispatch,
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sub-Components
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ControlBtn({ label, onClick, color }: { label: string; onClick: () => void; color?: string }) {
+  const colorClasses: Record<string, string> = {
+    emerald: "bg-emerald-600 hover:bg-emerald-500 text-white",
+    amber: "bg-amber-600 hover:bg-amber-500 text-white",
+    red: "bg-red-600 hover:bg-red-500 text-white",
+  };
+  return (
+    <button onClick={onClick}
+      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 ${color ? colorClasses[color] : "bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-alt)]"}`}>
+      {label}
+    </button>
+  );
+}
+
+function ActionBtn({ label, onClick, small }: { label: string; onClick: () => void; small?: boolean }) {
+  return (
+    <button onClick={onClick}
+      className={`rounded-xl border border-[var(--border)] bg-[var(--surface-alt)] hover:bg-[var(--primary)] hover:text-white font-semibold transition-all active:scale-95 ${small ? "py-2 px-2 text-xs" : "py-3 px-3 text-sm"}`}>
+      {label}
+    </button>
+  );
+}
+
+function FlowBtn({ label, onClick, color }: { label: string; onClick: () => void; color?: string }) {
+  const colorMap: Record<string, string> = {
+    amber: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+    red: "bg-red-500/20 text-red-300 border-red-500/40",
+  };
+  return (
+    <button onClick={onClick}
+      className={`px-4 py-2 rounded-lg text-xs font-bold border transition-all active:scale-95 ${color ? colorMap[color] : "bg-[var(--surface)] border-[var(--border)] text-[var(--text)] hover:bg-[var(--primary)] hover:text-white"}`}>
+      {label}
+    </button>
+  );
+}
+
+// ── Team Panel ──
+function TeamPanel({
+  team, teamName, onFieldPlayers, benchPlayers, state, isActive,
+  onPlayerClick, onBenchClick, onTeamAction, activeFlow, accentColor,
 }: {
-  title: string;
-  teamId: FootballTeam;
-  loading: boolean;
-  onGoal: () => void;
-  onFoul: () => void;
-  onSub: () => void;
-  dispatch: (type: FootballEventType, payload?: Record<string, unknown>) => void;
+  team: "team_a" | "team_b";
+  teamName: string;
+  onFieldPlayers: Player[];
+  benchPlayers: Player[];
+  state: FootballMatchState;
+  isActive: boolean;
+  onPlayerClick: (player: Player, team: "team_a" | "team_b") => void;
+  onBenchClick: (player: Player, team: "team_a" | "team_b") => void;
+  onTeamAction: (team: string, type: string) => void;
+  activeFlow: ActionFlow;
+  accentColor: string;
 }) {
-  return (
-    <Section title={title}>
-      <div className="grid grid-cols-2 gap-2">
-        <button disabled={loading} onClick={onGoal} className="col-span-2 flex items-center justify-center gap-2 h-16 rounded-xl font-bold text-white text-lg bg-[var(--success)] hover:brightness-110 active:scale-95 touch-manipulation disabled:opacity-50 transition-all">
-          ⚽ Goal
-        </button>
-        <button disabled={loading} onClick={() => dispatch("shot_on_target", { team: teamId })} className={btn.secondary + " text-sm"}>Shot On</button>
-        <button disabled={loading} onClick={() => dispatch("shot_off_target", { team: teamId })} className={btn.secondary + " text-sm"}>Shot Off</button>
-        <button disabled={loading} onClick={() => dispatch("corner", { team: teamId })} className={btn.teamEvent}>🚩 Corner</button>
-        <button disabled={loading} onClick={() => dispatch("offside", { team: teamId })} className={btn.teamEvent}>🚫 Offside</button>
-        <button disabled={loading} onClick={onFoul} className="h-12 rounded-xl font-semibold border border-[var(--warning)] bg-[var(--surface)] text-[var(--warning)] hover:bg-[var(--surface-alt)] active:scale-95 touch-manipulation disabled:opacity-50 transition-all">⚠ Foul</button>
-        <button disabled={loading} onClick={onSub} className="h-12 rounded-xl font-semibold border border-[var(--primary)] bg-[var(--surface)] text-[var(--primary)] hover:bg-[var(--surface-alt)] active:scale-95 touch-manipulation disabled:opacity-50 transition-all">🔄 Sub</button>
-        <button disabled={loading} onClick={() => dispatch("yellow_card", { team: teamId })} className="h-12 rounded-xl font-semibold border border-[var(--warning)] bg-[var(--surface)] text-[var(--warning)] hover:bg-[var(--surface-alt)] active:scale-95 touch-manipulation disabled:opacity-50 transition-all">🟨 Yellow</button>
-        <button disabled={loading} onClick={() => dispatch("red_card", { team: teamId })} className="h-12 rounded-xl font-semibold border border-[var(--danger)] bg-[var(--surface)] text-[var(--danger)] hover:bg-[var(--surface-alt)] active:scale-95 touch-manipulation disabled:opacity-50 transition-all">🟥 Red</button>
-      </div>
-    </Section>
-  );
-}
-
-// ─── Timeline Row ───────────────────────────────────────────────────────
-function TimelineRow({ evt, teamAName, teamBName }: { evt: FootballMatchEvent; teamAName: string; teamBName: string }) {
-  const mins = Math.floor(evt.match_time_seconds / 60);
-  const stoppage = evt.stoppage_time_seconds ? `+${Math.floor(evt.stoppage_time_seconds / 60)}` : "";
-  const teamName = evt.team === "team_a" ? teamAName : evt.team === "team_b" ? teamBName : "";
-
-  const icons: Record<string, string> = {
-    goal: "⚽", own_goal: "⚽🔴", penalty_goal: "⚽(P)", penalty_miss: "❌(P)",
-    yellow_card: "🟨", red_card: "🟥", substitution: "🔄",
-    foul: "⚠", corner: "🚩", offside: "🚫", free_kick: "🎯",
-    shot_on_target: "🎯", shot_off_target: "💨",
-  };
-  const icon = icons[evt.type] ?? "📝";
+  const borderColor = accentColor === "emerald" ? "border-emerald-500/30" : "border-amber-500/30";
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] text-sm">
-      <span className="font-mono font-bold text-[var(--text-muted)] w-14 text-right shrink-0">
-        {mins}&apos;{stoppage}
-      </span>
-      <span className="text-base">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <span className="font-semibold text-[var(--text)]">{teamName}</span>
-        {evt.player_name && <span className="text-[var(--text-muted)]"> — {evt.player_name}</span>}
-        {evt.assist_name && <span className="text-[var(--text-muted)]"> (Assist: {evt.assist_name})</span>}
-        {evt.details && <span className="text-[var(--text-muted)]"> · {evt.details}</span>}
+    <div className={`rounded-2xl border ${borderColor} bg-[var(--surface)] p-3 space-y-3`}>
+      {/* Team Name */}
+      <h4 className="font-bold text-xs uppercase tracking-widest text-[var(--text-muted)] text-center">{teamName}</h4>
+
+      {/* Team Actions Strip */}
+      {isActive && (
+        <div className="flex gap-1.5">
+          <button onClick={() => onTeamAction(team, "corner")} className="flex-1 text-xs py-1.5 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] font-semibold hover:bg-[var(--primary)] hover:text-white transition-all active:scale-95">📐 Corner</button>
+          <button onClick={() => onTeamAction(team, "goal_kick")} className="flex-1 text-xs py-1.5 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] font-semibold hover:bg-[var(--primary)] hover:text-white transition-all active:scale-95">🥅 GK</button>
+          <button onClick={() => onTeamAction(team, "throw_in")} className="flex-1 text-xs py-1.5 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] font-semibold hover:bg-[var(--primary)] hover:text-white transition-all active:scale-95">↗️ Throw</button>
+        </div>
+      )}
+
+      {/* On-field Players */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {onFieldPlayers.map(player => {
+          const sentOff = isPlayerSentOff(state, player.id);
+          const playerStats = state.player_stats[player.id];
+          const isGk = player.role?.toLowerCase() === 'gk' || player.role?.toLowerCase() === 'goalkeeper';
+          const isHighlighted = activeFlow?.type === "substitution" && activeFlow.team === team && activeFlow.step === "select_field_player";
+
+          return (
+            <button
+              key={player.id}
+              onClick={() => onPlayerClick(player, team)}
+              disabled={sentOff || !isActive}
+              className={`relative rounded-xl p-2 text-left border transition-all active:scale-95
+                ${sentOff ? "opacity-30 cursor-not-allowed border-red-500/50 bg-red-500/10" :
+                  isHighlighted ? "border-[var(--primary)] bg-[var(--primary)]/10 ring-2 ring-[var(--primary)] animate-pulse" :
+                    "border-[var(--border)] bg-[var(--surface-alt)] hover:border-[var(--primary)]"}`}
+            >
+              {isGk && <span className="absolute top-1 right-1 text-[9px] font-bold bg-yellow-400 text-black px-1.5 rounded">GK</span>}
+              <div className="font-bold text-xs text-[var(--text)] truncate">
+                {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+              </div>
+              {playerStats && (playerStats.goals > 0 || playerStats.yellow_cards > 0 || playerStats.red_cards > 0) && (
+                <div className="flex gap-1 mt-0.5 text-[10px]">
+                  {playerStats.goals > 0 && <span>⚽{playerStats.goals}</span>}
+                  {playerStats.yellow_cards > 0 && <span>🟨{playerStats.yellow_cards}</span>}
+                  {playerStats.red_cards > 0 && <span>🟥</span>}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Bench */}
+      {benchPlayers.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Bench</p>
+          <div className="flex flex-wrap gap-1">
+            {benchPlayers.map(player => (
+              <button key={player.id} onClick={() => onBenchClick(player, team)} disabled={!isActive}
+                className="text-[10px] px-2 py-1 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] text-[var(--text-muted)] font-semibold hover:border-[var(--primary)] hover:text-[var(--text)] transition-all disabled:opacity-40">
+                {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── Penalty Shootout Panel ─────────────────────────────────────────────
-function PenaltyShootoutPanel({
-  teamAName, teamBName, penalties, loading, dispatch,
+// ── Penalty Panel ──
+function PenaltyPanel({
+  teamAName, teamBName, onFieldA, onFieldB, penalties, onPenalty,
 }: {
   teamAName: string;
   teamBName: string;
-  penalties: PenaltyKick[];
-  loading: boolean;
-  dispatch: (type: FootballEventType, payload?: Record<string, unknown>) => void;
+  onFieldA: Player[];
+  onFieldB: Player[];
+  penalties: any[];
+  onPenalty: (team: string, playerId: string, playerName: string, scored: boolean) => void;
 }) {
-  const aKicks = penalties.filter((p) => p.team === "team_a");
-  const bKicks = penalties.filter((p) => p.team === "team_b");
+  const [selectedPlayer, setSelectedPlayer] = useState<{ player: Player; team: string } | null>(null);
+
+  const penaltiesA = penalties.filter((p: any) => p.team === 'team_a');
+  const penaltiesB = penalties.filter((p: any) => p.team === 'team_b');
 
   return (
-    <Section title="Penalty Shootout">
-      <div className="grid grid-cols-2 gap-6">
-        <div>
-          <h4 className="text-sm font-bold text-[var(--text)] mb-3">{teamAName}</h4>
-          <div className="flex gap-2 flex-wrap mb-3">
-            {aKicks.map((k, i) => (
-              <span key={i} className={`text-2xl ${k.scored ? "" : "opacity-50"}`}>
-                {k.scored ? "⚽" : "❌"}
-              </span>
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 space-y-4">
+      <h3 className="font-bold text-center text-sm uppercase tracking-widest text-[var(--text)]">⚽ Penalty Shootout</h3>
+      <div className="grid grid-cols-2 gap-4">
+        {/* Team A */}
+        <div className="text-center space-y-2">
+          <h4 className="font-bold text-xs text-[var(--text-muted)]">{teamAName}</h4>
+          <div className="flex justify-center gap-2">
+            {penaltiesA.map((p: any, i: number) => (
+              <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${p.scored ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                {p.scored ? '✓' : '✕'}
+              </div>
             ))}
           </div>
-          <div className="flex gap-2">
-            <button disabled={loading} onClick={() => dispatch("penalty_goal", { team: "team_a" })} className={btn.primary + " flex-1 text-sm"}>⚽ Scored</button>
-            <button disabled={loading} onClick={() => dispatch("penalty_miss", { team: "team_a" })} className={btn.danger + " flex-1 text-sm"}>❌ Missed</button>
+          <div className="flex flex-wrap gap-1 justify-center">
+            {onFieldA.map(p => (
+              <button key={p.id} onClick={() => setSelectedPlayer({ player: p, team: 'team_a' })}
+                className="text-xs px-2 py-1 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] font-semibold hover:border-emerald-500 transition-all">
+                {p.name}
+              </button>
+            ))}
           </div>
         </div>
-        <div>
-          <h4 className="text-sm font-bold text-[var(--text)] mb-3">{teamBName}</h4>
-          <div className="flex gap-2 flex-wrap mb-3">
-            {bKicks.map((k, i) => (
-              <span key={i} className={`text-2xl ${k.scored ? "" : "opacity-50"}`}>
-                {k.scored ? "⚽" : "❌"}
-              </span>
+        {/* Team B */}
+        <div className="text-center space-y-2">
+          <h4 className="font-bold text-xs text-[var(--text-muted)]">{teamBName}</h4>
+          <div className="flex justify-center gap-2">
+            {penaltiesB.map((p: any, i: number) => (
+              <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${p.scored ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                {p.scored ? '✓' : '✕'}
+              </div>
             ))}
           </div>
-          <div className="flex gap-2">
-            <button disabled={loading} onClick={() => dispatch("penalty_goal", { team: "team_b" })} className={btn.primary + " flex-1 text-sm"}>⚽ Scored</button>
-            <button disabled={loading} onClick={() => dispatch("penalty_miss", { team: "team_b" })} className={btn.danger + " flex-1 text-sm"}>❌ Missed</button>
+          <div className="flex flex-wrap gap-1 justify-center">
+            {onFieldB.map(p => (
+              <button key={p.id} onClick={() => setSelectedPlayer({ player: p, team: 'team_b' })}
+                className="text-xs px-2 py-1 rounded-lg bg-[var(--surface-alt)] border border-[var(--border)] font-semibold hover:border-amber-500 transition-all">
+                {p.name}
+              </button>
+            ))}
           </div>
         </div>
       </div>
-    </Section>
+
+      {selectedPlayer && (
+        <div className="flex items-center justify-center gap-3 pt-2 border-t border-[var(--border)]">
+          <span className="text-sm font-bold text-[var(--text)]">{selectedPlayer.player.name}:</span>
+          <button onClick={() => { onPenalty(selectedPlayer.team, selectedPlayer.player.id, selectedPlayer.player.name, true); setSelectedPlayer(null); }}
+            className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-500 active:scale-95 transition-all">✓ Scored</button>
+          <button onClick={() => { onPenalty(selectedPlayer.team, selectedPlayer.player.id, selectedPlayer.player.name, false); setSelectedPlayer(null); }}
+            className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-sm hover:bg-red-500 active:scale-95 transition-all">✕ Missed</button>
+        </div>
+      )}
+    </div>
   );
 }
 
-// ─── Quick Stats ────────────────────────────────────────────────────────
-function QuickStats({ state, teamAName, teamBName }: { state: FootballMatchState; teamAName: string; teamBName: string }) {
-  const { team_a_stats: a, team_b_stats: b } = state;
-  const rows = [
-    { label: "Shots On", a: a.shots_on_target, b: b.shots_on_target },
-    { label: "Shots Off", a: a.shots_off_target, b: b.shots_off_target },
-    { label: "Corners", a: a.corners, b: b.corners },
-    { label: "Fouls", a: a.fouls, b: b.fouls },
-    { label: "Offsides", a: a.offsides, b: b.offsides },
-    { label: "Yellow", a: a.yellow_cards, b: b.yellow_cards },
-    { label: "Red", a: a.red_cards, b: b.red_cards },
-  ];
+// ── Stat Bar ──
+function StatBar({ label, a, b }: { label: string; a: number; b: number }) {
+  const total = a + b || 1;
+  const pctA = (a / total) * 100;
+  const pctB = (b / total) * 100;
 
   return (
-    <Section title="Match Stats">
-      <div className="grid grid-cols-[1fr_auto_1fr] gap-x-4 gap-y-2 text-sm">
-        <div className="text-center font-bold text-[var(--text)]">{teamAName}</div>
-        <div />
-        <div className="text-center font-bold text-[var(--text)]">{teamBName}</div>
-        {rows.map((r) => (
-          <React.Fragment key={r.label}>
-            <div className="text-center font-semibold tabular-nums text-[var(--text)]">{r.a}</div>
-            <div className="text-center text-[var(--text-muted)] text-xs">{r.label}</div>
-            <div className="text-center font-semibold tabular-nums text-[var(--text)]">{r.b}</div>
-          </React.Fragment>
-        ))}
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-6 text-right font-bold tabular-nums text-[var(--text)]">{a}</span>
+      <div className="flex-1 h-2 rounded-full bg-[var(--surface-alt)] overflow-hidden flex">
+        <div className="h-full bg-emerald-500 rounded-l-full transition-all duration-500" style={{ width: `${pctA}%` }} />
+        <div className="h-full bg-amber-500 rounded-r-full transition-all duration-500 ml-auto" style={{ width: `${pctB}%` }} />
       </div>
-    </Section>
+      <span className="w-6 text-left font-bold tabular-nums text-[var(--text)]">{b}</span>
+      <span className="w-16 text-[var(--text-muted)] text-[10px] uppercase tracking-wide">{label}</span>
+    </div>
   );
 }
 
-// ─── MODAL: Goal ────────────────────────────────────────────────────────
-function GoalModal({
-  team, teamName, loading, onSubmit, onClose,
+// ── Lineup Setup (Pre-Match) with GK Toggle ──
+function LineupSetup({
+  matchId, teamAName, teamBName, teamAPlayers, teamBPlayers,
+  playersPerSide, initialLineupA, initialLineupB, loading, onConfirm,
 }: {
-  team: FootballTeam;
-  teamName: string;
+  matchId: string;
+  teamAName: string;
+  teamBName: string;
+  teamAPlayers: Player[];
+  teamBPlayers: Player[];
+  playersPerSide: number;
+  initialLineupA: string[];
+  initialLineupB: string[];
   loading: boolean;
-  onSubmit: (payload: Record<string, unknown>) => void;
-  onClose: () => void;
+  onConfirm: (lineupA: string[], lineupB: string[], gkA: string | null, gkB: string | null) => void;
 }) {
-  const [playerName, setPlayerName] = useState("");
-  const [assistName, setAssistName] = useState("");
+  const [selectedA, setSelectedA] = useState<Set<string>>(new Set(initialLineupA));
+  const [selectedB, setSelectedB] = useState<Set<string>>(new Set(initialLineupB));
+  const [gkA, setGkA] = useState<string | null>(null);
+  const [gkB, setGkB] = useState<string | null>(null);
 
-  return (
-    <ModalShell title={`⚽ Goal — ${teamName}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-1">Scorer</label>
-          <input
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            placeholder="Player name (optional)"
-            className="w-full h-12 px-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-1">Assist</label>
-          <input
-            value={assistName}
-            onChange={(e) => setAssistName(e.target.value)}
-            placeholder="Assist player (optional)"
-            className="w-full h-12 px-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-          />
-        </div>
+  const togglePlayer = (playerId: string, team: 'a' | 'b') => {
+    if (team === 'a') {
+      setSelectedA(prev => {
+        const next = new Set(prev);
+        if (next.has(playerId)) {
+          next.delete(playerId);
+          if (gkA === playerId) setGkA(null);
+        } else if (next.size < playersPerSide) {
+          next.add(playerId);
+        }
+        return next;
+      });
+    } else {
+      setSelectedB(prev => {
+        const next = new Set(prev);
+        if (next.has(playerId)) {
+          next.delete(playerId);
+          if (gkB === playerId) setGkB(null);
+        } else if (next.size < playersPerSide) {
+          next.add(playerId);
+        }
+        return next;
+      });
+    }
+  };
+
+  const canConfirm = selectedA.size === playersPerSide && selectedB.size === playersPerSide;
+
+  const renderPlayerRow = (player: Player, team: 'a' | 'b') => {
+    const selected = team === 'a' ? selectedA : selectedB;
+    const currentGk = team === 'a' ? gkA : gkB;
+    const setGk = team === 'a' ? setGkA : setGkB;
+    const isSelected = selected.has(player.id);
+    const isFull = selected.size >= playersPerSide && !isSelected;
+    const isGk = currentGk === player.id;
+    const accentColor = team === 'a' ? 'emerald' : 'amber';
+
+    return (
+      <div key={player.id} className="flex items-center gap-1.5">
         <button
-          disabled={loading}
-          onClick={() => onSubmit({ player_name: playerName || undefined, assist_player_name: assistName || undefined })}
-          className={btn.primary + " w-full"}
+          onClick={() => togglePlayer(player.id, team)}
+          disabled={isFull}
+          className={`flex-1 flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all active:scale-[0.98]
+            ${isSelected
+              ? `border-${accentColor}-500 bg-${accentColor}-500/10 ring-1 ring-${accentColor}-500/30`
+              : isFull
+                ? 'border-[var(--border)] bg-[var(--surface-alt)] opacity-40 cursor-not-allowed'
+                : `border-[var(--border)] bg-[var(--surface-alt)] hover:border-${accentColor}-500/50`}`}
         >
-          {loading ? "Saving..." : "Save Goal"}
+          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all
+            ${isSelected ? `bg-${accentColor}-500 border-${accentColor}-500 text-white` : 'border-[var(--border)] text-[var(--text-muted)]'}`}>
+            {isSelected ? '✓' : ''}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-xs text-[var(--text)] truncate">
+              {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+            </div>
+            {player.role && <div className="text-[10px] text-[var(--text-muted)] uppercase">{player.role}</div>}
+          </div>
         </button>
+        {/* GK Toggle — only shown when player is selected */}
+        {isSelected && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setGk(isGk ? null : player.id); }}
+            className={`shrink-0 px-2 py-1.5 rounded-lg text-[10px] font-black border-2 transition-all active:scale-95
+              ${isGk
+                ? 'bg-yellow-400 border-yellow-400 text-black shadow-md shadow-yellow-400/20'
+                : 'bg-[var(--surface-alt)] border-[var(--border)] text-[var(--text-muted)] hover:border-yellow-400/50'}`}
+            title={isGk ? 'Remove GK' : 'Set as GK'}
+          >
+            🧤 GK
+          </button>
+        )}
       </div>
-    </ModalShell>
-  );
-}
-
-// ─── MODAL: Foul ────────────────────────────────────────────────────────
-function FoulModal({
-  team, teamName, opponentName, loading, onSubmit, onClose,
-}: {
-  team: FootballTeam;
-  teamName: string;
-  opponentName: string;
-  loading: boolean;
-  onSubmit: (type: FootballEventType, payload: Record<string, unknown>) => void;
-  onClose: () => void;
-}) {
-  const [card, setCard] = useState<"none" | "yellow" | "red">("none");
-  const [outcome, setOutcome] = useState<"free_kick" | "penalty" | "advantage">("free_kick");
-
-  const submit = () => {
-    const eventType: FootballEventType = card === "yellow" ? "yellow_card" : card === "red" ? "red_card" : "foul";
-    onSubmit(eventType, { card, foul_outcome: outcome });
+    );
   };
 
   return (
-    <ModalShell title={`⚠ Foul — ${teamName}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-2">Card Decision</label>
-          <div className="flex gap-2">
-            {(["none", "yellow", "red"] as const).map((c) => (
-              <button
-                key={c}
-                onClick={() => setCard(c)}
-                className={`flex-1 h-12 rounded-xl font-semibold capitalize transition-all active:scale-95 ${
-                  card === c
-                    ? c === "yellow" ? "bg-[var(--warning)] text-white"
-                    : c === "red" ? "bg-[var(--danger)] text-white"
-                    : "bg-[var(--primary)] text-white"
-                    : "border border-[var(--border)] bg-[var(--surface)] text-[var(--text)]"
-                }`}
-              >
-                {c === "none" ? "No Card" : c === "yellow" ? "🟨 Yellow" : "🟥 Red"}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-2">Outcome</label>
-          <div className="flex gap-2">
-            {(["free_kick", "penalty", "advantage"] as const).map((o) => (
-              <button
-                key={o}
-                onClick={() => setOutcome(o)}
-                className={`flex-1 h-12 rounded-xl font-semibold capitalize transition-all active:scale-95 ${
-                  outcome === o
-                    ? "bg-[var(--primary)] text-white"
-                    : "border border-[var(--border)] bg-[var(--surface)] text-[var(--text)]"
-                }`}
-              >
-                {o.replace(/_/g, " ")}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button disabled={loading} onClick={submit} className={btn.primary + " w-full"}>
-          {loading ? "Saving..." : "Record Foul"}
-        </button>
+    <div className="rounded-2xl border-2 border-dashed border-[var(--primary)] bg-[var(--surface)] p-5 space-y-5 animate-fade-in">
+      <div className="text-center space-y-1">
+        <h3 className="text-lg font-black text-[var(--text)]">📋 Set Starting Lineup</h3>
+        <p className="text-xs text-[var(--text-muted)]">
+          Select <span className="font-bold text-[var(--primary)]">{playersPerSide}</span> players per team · Tap <span className="font-bold text-yellow-500">🧤 GK</span> to designate goalkeeper
+        </p>
       </div>
-    </ModalShell>
-  );
-}
 
-// ─── MODAL: Substitution ────────────────────────────────────────────────
-function SubModal({
-  team, teamName, loading, onSubmit, onClose,
-}: {
-  team: FootballTeam;
-  teamName: string;
-  loading: boolean;
-  onSubmit: (payload: Record<string, unknown>) => void;
-  onClose: () => void;
-}) {
-  const [outName, setOutName] = useState("");
-  const [inName, setInName] = useState("");
+      <div className="grid grid-cols-2 gap-4">
+        {/* Team A */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase tracking-widest text-emerald-500">{teamAName}</h4>
+            <span className={`text-xs font-bold tabular-nums ${selectedA.size === playersPerSide ? 'text-emerald-500' : 'text-[var(--text-muted)]'}`}>
+              {selectedA.size}/{playersPerSide}
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {teamAPlayers.map(player => renderPlayerRow(player, 'a'))}
+          </div>
+          {gkA && (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500">
+              🧤 GK: {teamAPlayers.find(p => p.id === gkA)?.name}
+            </div>
+          )}
+        </div>
 
-  return (
-    <ModalShell title={`🔄 Substitution — ${teamName}`} onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-1">Player OUT</label>
-          <input
-            value={outName}
-            onChange={(e) => setOutName(e.target.value)}
-            placeholder="Player going off"
-            className="w-full h-12 px-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] focus:outline-none focus:border-[var(--danger)]"
-          />
+        {/* Team B */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-bold text-xs uppercase tracking-widest text-amber-500">{teamBName}</h4>
+            <span className={`text-xs font-bold tabular-nums ${selectedB.size === playersPerSide ? 'text-amber-500' : 'text-[var(--text-muted)]'}`}>
+              {selectedB.size}/{playersPerSide}
+            </span>
+          </div>
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {teamBPlayers.map(player => renderPlayerRow(player, 'b'))}
+          </div>
+          {gkB && (
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500">
+              🧤 GK: {teamBPlayers.find(p => p.id === gkB)?.name}
+            </div>
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-[var(--text)] mb-1">Player IN</label>
-          <input
-            value={inName}
-            onChange={(e) => setInName(e.target.value)}
-            placeholder="Player coming on"
-            className="w-full h-12 px-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] focus:outline-none focus:border-[var(--success)]"
-          />
-        </div>
+      </div>
+
+      <div className="flex justify-center pt-2">
         <button
-          disabled={loading || (!outName && !inName)}
-          onClick={() => onSubmit({ sub_out_name: outName || undefined, sub_in_name: inName || undefined })}
-          className={btn.primary + " w-full"}
+          onClick={() => onConfirm(Array.from(selectedA), Array.from(selectedB), gkA, gkB)}
+          disabled={!canConfirm || loading}
+          className={`px-8 py-3 rounded-xl text-sm font-black transition-all active:scale-95
+            ${canConfirm
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+              : 'bg-[var(--surface-alt)] border border-[var(--border)] text-[var(--text-muted)] cursor-not-allowed'}`}
         >
-          {loading ? "Saving..." : "Confirm Sub"}
+          {loading ? 'Saving...' : canConfirm ? '✅ Confirm Lineup & Ready to Start' : `Select ${playersPerSide} per team`}
         </button>
-      </div>
-    </ModalShell>
-  );
-}
-
-// ─── MODAL: Stoppage Time ───────────────────────────────────────────────
-function StoppageModal({
-  loading, onSubmit, onClose,
-}: {
-  loading: boolean;
-  onSubmit: (mins: number) => void;
-  onClose: () => void;
-}) {
-  const [mins, setMins] = useState(3);
-
-  return (
-    <ModalShell title="⏱ Add Stoppage Time" onClose={onClose}>
-      <div className="space-y-4">
-        <div className="flex items-center justify-center gap-4">
-          <button onClick={() => setMins(Math.max(1, mins - 1))} className={btn.secondary + " w-14"}>−</button>
-          <span className="text-4xl font-bold tabular-nums text-[var(--text)] min-w-[60px] text-center">{mins}</span>
-          <button onClick={() => setMins(mins + 1)} className={btn.secondary + " w-14"}>+</button>
-        </div>
-        <p className="text-center text-sm text-[var(--text-muted)]">minutes of stoppage time</p>
-        <button disabled={loading} onClick={() => { onSubmit(mins); onClose(); }} className={btn.primary + " w-full"}>
-          {loading ? "Adding..." : `Add +${mins} min`}
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
-
-// ─── Modal Shell ────────────────────────────────────────────────────────
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-end md:items-center justify-center bg-black/50 animate-[fadeIn_0.15s_ease]" onClick={onClose}>
-      <div
-        className="w-full max-w-md bg-[var(--surface)] rounded-t-2xl md:rounded-2xl p-6 shadow-2xl border border-[var(--border)] animate-[slideUp_0.2s_ease]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-[var(--text)]">{title}</h3>
-          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text)] text-xl leading-none">✕</button>
-        </div>
-        {children}
       </div>
     </div>
   );

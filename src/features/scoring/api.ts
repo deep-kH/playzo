@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import type { Json } from "@/lib/types/database";
+import { normalizeFootballEventType } from "./football/types";
 
 export async function processGenericEvent(
   matchId: string,
@@ -9,9 +10,10 @@ export async function processGenericEvent(
   if (!matchId || matchId === "undefined") {
     throw new Error("processGenericEvent: missing matchId");
   }
+  const normalizedType = normalizeFootballEventType(type) ?? type;
   const { error } = await supabase.rpc("rpc_process_event", {
     p_match_id: matchId,
-    p_type: type,
+    p_type: normalizedType,
     p_payload: payload,
   } as never);
 

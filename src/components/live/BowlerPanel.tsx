@@ -3,15 +3,14 @@ import type { Player, BowlingStats } from "@/lib/types/database";
 interface BowlerPanelProps {
   bowler: Player | null;
   stats: BowlingStats | null;
+  bowlerSnapshot?: Record<string, any> | null;
 }
 
-export function BowlerPanel({ bowler, stats }: BowlerPanelProps) {
+export function BowlerPanel({ bowler, stats, bowlerSnapshot }: BowlerPanelProps) {
   if (!bowler) return null;
 
-  const economy =
-    stats && parseFloat(String(stats.overs)) > 0
-      ? (stats.runs_conceded / parseFloat(String(stats.overs))).toFixed(2)
-      : "0.00";
+  // ✅ Read economy from snapshot (computed by backend)
+  const economy = bowlerSnapshot?.economy ?? "0.00";
 
   return (
     <div className="card !p-0 overflow-hidden">
