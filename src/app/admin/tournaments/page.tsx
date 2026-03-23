@@ -65,61 +65,82 @@ export default function TournamentsPage() {
     e.preventDefault();
     setSaving(true);
 
-    const settings: Record<string, unknown> = {};
-    if (sport === "cricket") {
-      settings.overs = parseInt(overs);
-      settings.players_per_team = parseInt(playersPerTeam);
-      settings.max_overs_per_bowler = parseInt(maxOversPerBowler);
+    try {
+      const settings: Record<string, unknown> = {};
+      if (sport === "cricket") {
+        settings.overs = parseInt(overs);
+        settings.players_per_team = parseInt(playersPerTeam);
+        settings.max_overs_per_bowler = parseInt(maxOversPerBowler);
+      }
+
+      await createTournamentAdmin({
+        name,
+        sport,
+        location: location || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        settings,
+      });
+
+      resetForm();
+      await fetchTournaments();
+    } catch (err: any) {
+      console.error("Failed to create tournament:", err);
+      alert(err.message ?? "Failed to create tournament.");
+    } finally {
+      setSaving(false);
     }
-
-    await createTournamentAdmin({
-      name,
-      sport,
-      location: location || null,
-      start_date: startDate || null,
-      end_date: endDate || null,
-      settings,
-    });
-
-    setSaving(false);
-    resetForm();
-    fetchTournaments();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this tournament and all its matches?")) return;
-    await deleteTournamentAdmin(id);
-    fetchTournaments();
+    try {
+      await deleteTournamentAdmin(id);
+      await fetchTournaments();
+    } catch (err: any) {
+      console.error("Failed to delete tournament:", err);
+      alert(err.message ?? "Failed to delete tournament.");
+    }
   };
 
   const openTeamSelector = async (tournament: Tournament) => {
     setSelectedTournament(tournament);
 
-    const [teamsData, teamIds] = await Promise.all([
-      listTeamsBySportAdmin(tournament.sport),
-      listTournamentTeamIdsAdmin(tournament.id),
-    ]);
+    try {
+      const [teamsData, teamIds] = await Promise.all([
+        listTeamsBySportAdmin(tournament.sport),
+        listTournamentTeamIdsAdmin(tournament.id),
+      ]);
 
-    setAllTeams((teamsData as Team[]) ?? []);
-    setTournamentTeamIds(teamIds);
-    setShowTeamSelector(true);
+      setAllTeams((teamsData as Team[]) ?? []);
+      setTournamentTeamIds(teamIds);
+      setShowTeamSelector(true);
+    } catch (err: any) {
+      console.error("Failed to load teams:", err);
+      alert("Failed to load teams for selection.");
+    }
   };
 
   const toggleTeam = async (teamId: string) => {
     if (!selectedTournament) return;
 
-    if (tournamentTeamIds.includes(teamId)) {
-      await removeTeamFromTournamentAdmin({
-        tournament_id: selectedTournament.id,
-        team_id: teamId,
-      });
-      setTournamentTeamIds((prev) => prev.filter((id) => id !== teamId));
-    } else {
-      await addTeamToTournamentAdmin({
-        tournament_id: selectedTournament.id,
-        team_id: teamId,
-      });
-      setTournamentTeamIds((prev) => [...prev, teamId]);
+    try {
+      if (tournamentTeamIds.includes(teamId)) {
+        await removeTeamFromTournamentAdmin({
+          tournament_id: selectedTournament.id,
+          team_id: teamId,
+        });
+        setTournamentTeamIds((prev) => prev.filter((id) => id !== teamId));
+      } else {
+        await addTeamToTournamentAdmin({
+          tournament_id: selectedTournament.id,
+          team_id: teamId,
+        });
+        setTournamentTeamIds((prev) => [...prev, teamId]);
+      }
+    } catch (err: any) {
+      console.error("Failed to toggle team:", err);
+      alert("Failed to update team assignment.");
     }
   };
 

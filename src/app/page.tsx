@@ -11,9 +11,15 @@ export default function HomePage() {
 
   useEffect(() => {
     async function fetchTournaments() {
-      const data = await listActiveOrUpcomingTournaments();
-      setTournaments((data as Tournament[]) ?? []);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const data = await listActiveOrUpcomingTournaments();
+        setTournaments((data as Tournament[]) ?? []);
+      } catch (err) {
+        console.error("Failed to fetch tournaments:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     fetchTournaments();
   }, []);

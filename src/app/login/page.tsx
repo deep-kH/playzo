@@ -5,7 +5,7 @@ import { useAuth } from "@/components/common/AuthProvider";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const { signIn, user, isAdmin, sessionError } = useAuth();
+  const { signIn, user, isAdmin, sessionError, clearError } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,6 +19,13 @@ export default function LoginPage() {
     }
   }, [user, isAdmin, router]);
 
+  // Sync with session error (e.g. if forced sign out happened)
+  useEffect(() => {
+    if (sessionError) {
+      setError(sessionError);
+    }
+  }, [sessionError]);
+
   if (user && isAdmin) {
     return null;
   }
@@ -26,6 +33,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    clearError();
     setLoading(true);
 
     const { error: signInError } = await signIn(email, password);

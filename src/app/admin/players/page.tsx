@@ -109,38 +109,49 @@ export default function PlayersPage() {
     e.preventDefault();
     setSaving(true);
     
-    const selectedTeam = teams.find((t) => t.id === teamId);
-    const sport = selectedTeam?.sport || "cricket";
-    const allowedRoles = getRolesForSport(sport).map(r => r.value);
-    
-    if (teamId && !allowedRoles.includes(role)) {
-      alert(`Invalid role "${role}" for sport "${sport}". Please update the role.`);
+    try {
+      const selectedTeam = teams.find((t) => t.id === teamId);
+      const sport = selectedTeam?.sport || "cricket";
+      const allowedRoles = getRolesForSport(sport).map(r => r.value);
+      
+      if (teamId && !allowedRoles.includes(role)) {
+        alert(`Invalid role "${role}" for sport "${sport}". Please update the role.`);
+        setSaving(false);
+        return;
+      }
+
+      const payload = {
+        name,
+        team_id: teamId || null,
+        role,
+        jersey_number: jerseyNumber ? parseInt(jerseyNumber) : null,
+      };
+
+      if (editingPlayer) {
+        await updatePlayerAdmin({ id: editingPlayer.id, ...payload });
+      } else {
+        await createPlayerAdmin(payload);
+      }
+
+      resetForm();
+      await fetchData();
+    } catch (err: any) {
+      console.error("Failed to save player:", err);
+      alert(err.message ?? "Failed to save player. Please try again.");
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const payload = {
-      name,
-      team_id: teamId || null,
-      role,
-      jersey_number: jerseyNumber ? parseInt(jerseyNumber) : null,
-    };
-
-    if (editingPlayer) {
-      await updatePlayerAdmin({ id: editingPlayer.id, ...payload });
-    } else {
-      await createPlayerAdmin(payload);
-    }
-
-    setSaving(false);
-    resetForm();
-    fetchData();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this player?")) return;
-    await deletePlayerAdmin(id);
-    fetchData();
+    try {
+      await deletePlayerAdmin(id);
+      await fetchData();
+    } catch (err: any) {
+      console.error("Failed to delete player:", err);
+      alert(err.message ?? "Failed to delete player.");
+    }
   };
 
   const filteredPlayers = filterTeam

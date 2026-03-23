@@ -21,6 +21,8 @@ export function ScoreHeader({
   // ✅ Read RRR from stats (computed by backend)
   const rrr = stats?.rrr ? String(stats.rrr) : null;
 
+  const oversFloat = parseFloat(String(innings.total_overs || "0"));
+
   return (
     <div className="card !p-4">
       <div className="flex items-end justify-between">
@@ -47,7 +49,7 @@ export function ScoreHeader({
                 </span>{" "}
                 from{" "}
                 <span className="font-bold">
-                  {(maxOvers - parseFloat(String(innings.total_overs ?? 0))).toFixed(1)}
+                  {(maxOvers - oversFloat).toFixed(1)}
                 </span>{" "}
                 ov
               </p>

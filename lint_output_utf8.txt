@@ -1,0 +1,260 @@
+﻿
+> livescore@0.1.0 lint
+> eslint
+
+
+D:\Project\livescore\src\app\admin\players\page.tsx
+   66:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+  138:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  151:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\score\[matchId]\badminton\page.tsx
+  26:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  27:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  28:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  29:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\score\[matchId]\football\page.tsx
+  56:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  57:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\score\[matchId]\page.tsx
+  34:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\teams\page.tsx
+  35:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+  65:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  78:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\tournaments\[id]\matches\[matchId]\cricket\page.tsx
+  10:10  warning  'redirecting' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+  14:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Project\livescore\src\app\admin\tournaments\[id]\matches\[matchId]\cricket\page.tsx:14:7
+  12 |   useEffect(() => {
+  13 |     if (!params?.matchId) {
+> 14 |       setRedirecting(false);
+     |       ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  15 |       return;
+  16 |     }
+  17 |     router.replace(`/admin/score/${params.matchId}`);  react-hooks/set-state-in-effect
+
+D:\Project\livescore\src\app\admin\tournaments\[id]\matches\page.tsx
+  722:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  727:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  730:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\admin\tournaments\page.tsx
+   48:5   warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/set-state-in-effect')
+   87:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  100:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  118:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+  141:19  error    Unexpected any. Specify a different type                                                            @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\live\[matchId]\page.tsx
+  35:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\live\matches\[id]\badminton\page.tsx
+  27:41  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  28:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  29:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  31:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\live\matches\[id]\football\page.tsx
+  10:64  warning  'getPhaseLabel' is defined but never used  @typescript-eslint/no-unused-vars
+  26:35  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  26:86  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  27:31  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  28:31  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\live\page.tsx
+  38:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Project\livescore\src\app\live\page.tsx:38:5
+  36 |
+  37 |   useEffect(() => {
+> 38 |     fetchData();
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  39 |   }, [fetchData]);
+  40 |
+  41 |   // Realtime: re-fetch on any match change  react-hooks/set-state-in-effect
+
+D:\Project\livescore\src\app\sports\football\match\[matchId]\page.tsx
+  11:34  warning  'getEventIcon' is defined but never used    @typescript-eslint/no-unused-vars
+  11:48  warning  'isPrimaryEvent' is defined but never used  @typescript-eslint/no-unused-vars
+  25:31  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  26:31  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  29:50  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+  85:41  error    Unexpected any. Specify a different type    @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\app\sports\football\tournament\[tournamentId]\mvp\page.tsx
+  22:48  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  23:52  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  24:52  error    Unexpected any. Specify a different type   @typescript-eslint/no-explicit-any
+  55:9   warning  'rest' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+D:\Project\livescore\src\app\tournaments\[id]\page.tsx
+  53:66  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\components\common\AuthProvider.tsx
+   69:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   71:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  156:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\components\common\MatchCard.tsx
+   24:40  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   28:27  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   29:27  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   37:28  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   37:43  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   40:28  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   40:43  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   65:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+   83:15  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  129:49  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  130:45  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\components\live\BowlerPanel.tsx
+  6:35  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\components\live\MatchInsights.tsx
+   8:26  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  12:3   warning  'innings' is defined but never used       @typescript-eslint/no-unused-vars
+  15:3   warning  'maxOvers' is defined but never used      @typescript-eslint/no-unused-vars
+
+D:\Project\livescore\src\components\live\ScoreHeader.tsx
+  8:26  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\features\matches\hooks.ts
+  11:53  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\features\realtime\useLiveMatch.ts
+  23:10  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  32:38  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  61:18  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  75:24  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  79:21  error    Unexpected any. Specify a different type                                                                    @typescript-eslint/no-explicit-any
+  97:6   warning  React Hook useEffect has a missing dependency: 'loading'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\Project\livescore\src\features\scoring\badminton\components\BadmintonScorerController.tsx
+   12:27  warning  'getScoresArray' is defined but never used                                                                                 @typescript-eslint/no-unused-vars
+   86:6   warning  React Hook React.useEffect has a missing dependency: 'setupPositions'. Either include it or remove the dependency array    react-hooks/exhaustive-deps
+  101:67  error    Unexpected any. Specify a different type                                                                                   @typescript-eslint/no-explicit-any
+  104:21  error    Unexpected any. Specify a different type                                                                                   @typescript-eslint/no-explicit-any
+  141:6   warning  React Hook useEffect has missing dependencies: 'matchId' and 'router'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  640:55  error    Unexpected any. Specify a different type                                                                                   @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\features\scoring\football\components\FootballMatchSummary.tsx
+   7:35  warning  'FootballMatchEvent' is defined but never used                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+   7:55  warning  'PenaltyKick' is defined but never used                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+   8:10  warning  'getPhaseLabel' is defined but never used                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+  49:26  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  55:26  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  71:19  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Project\livescore\src\features\scoring\football\components\FootballOverlayManager.tsx
+  30:9  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Project\livescore\src\features\scoring\football\components\FootballOverlayManager.tsx:30:9
+  28 |
+  29 |       if (lastEvent.type === "goal" || lastEvent.type === "own_goal") {
+> 30 |         setOverlayData({ playerName: lastEvent.player_name, teamName, assistName: lastEvent.assist_name });
+     |         ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  31 |         setOverlay("goal");
+  32 |       } else if (lastEvent.type === "red_card") {
+  33 |         setOverlayData({ playerName: lastEvent.player_name, teamName });  react-hooks/set-state-in-effect
+
+D:\Project\livescore\src\features\scoring\football\components\FootballScorecard.tsx
+  21:19  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+D:\Project\livescore\src\features\scoring\football\components\FootballScorerController.tsx
+    9:35  warning  'FootballMatchEvent' is defined but never used                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+   11:3   warning  'isPrimaryEvent' is defined but never used                                                                                                                                                                                                                                               @typescript-eslint/no-unused-vars
+   14:3   warning  'PRIMARY_EVENT_TYPES' is defined but never used                                                                                                                                                                                                                                          @typescript-eslint/no-unused-vars
+   22:10  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+   68:9   warning  The 'startingLineupA' logical expression could make the dependencies of useMemo Hook (at line 85) change on every render. To fix this, wrap the initialization of 'startingLineupA' in its own useMemo() Hook                                                                            react-hooks/exhaustive-deps
+   69:9   warning  The 'startingLineupB' logical expression could make the dependencies of useMemo Hook (at line 85) change on every render. To fix this, wrap the initialization of 'startingLineupB' in its own useMemo() Hook                                                                            react-hooks/exhaustive-deps
+  120:35  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  291:26  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  319:26  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  362:25  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  800:14  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  805:43  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  806:43  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  816:33  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  835:33  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                 @typescript-eslint/no-explicit-any
+  886:3   warning  'matchId' is defined but never used                                                                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+
+D:\Project\livescore\src\features\scoring\football\engine.ts
+  38:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\features\scoring\football\hooks.ts
+   6:39  warning  'useCallback' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+   7:35  warning  'FootballPhase' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       @typescript-eslint/no-unused-vars
+  35:34  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+D:\Project\livescore\src\features\scoring\football\hooks.ts:35:34
+  33 |   halfDurationSeconds: number
+  34 | ): FootballClockDisplay {
+> 35 |   const [now, setNow] = useState(Date.now());
+     |                                  ^^^^^^^^^^ Cannot call impure function
+  36 |   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  37 |
+  38 |   useEffect(() => {  react-hooks/purity
+
+D:\Project\livescore\src\features\scoring\football\mvpApi.ts
+  25:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  53:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  53:48  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  68:40  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  68:48  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\hooks\useTheme.ts
+  16:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\Project\livescore\src\hooks\useTheme.ts:16:5
+  14 |   useEffect(() => {
+  15 |     const isDark = document.documentElement.classList.contains("dark");
+> 16 |     setThemeState(isDark ? "dark" : "light");
+     |     ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  17 |   }, []);
+  18 |
+  19 |   const setTheme = useCallback((t: "light" | "dark") => {  react-hooks/set-state-in-effect
+
+D:\Project\livescore\src\lib\types\database.ts
+  228:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+D:\Project\livescore\src\middleware.ts
+  20:48  warning  'options' is defined but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 115 problems (81 errors, 34 warnings)
+  0 errors and 3 warnings potentially fixable with the `--fix` option.
+

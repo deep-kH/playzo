@@ -120,6 +120,17 @@ export function FootballScorerController({
     try { await fn(); } catch (e: any) { alert(e.message); } finally { setLoading(false); }
   }, []);
 
+  // Safety timeout for local loading state
+  useEffect(() => {
+    if (loading) {
+      const timer = setTimeout(() => {
+        setLoading(false);
+        console.warn("FootballScorerController: Local loading safety timeout hit.");
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
   const handlePhaseControl = useCallback((action: string) => {
     wrap(async () => {
       switch (action) {

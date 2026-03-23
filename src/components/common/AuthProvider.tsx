@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
 } from "react";
 import { supabase } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types/database";
@@ -20,6 +21,7 @@ interface AuthContextType {
   sessionError: string | null;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -31,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   sessionError: null,
   signIn: async () => ({ error: null }),
   signOut: async () => {},
+  clearError: () => {},
 });
 
 export function useAuth() {
@@ -53,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const isSigningIn = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data } = await supabase
@@ -83,12 +87,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+    // Use getUser() instead of getSession() for security and to ensure the session is valid
+    supabase.auth.getUser().then(async ({ data: { user: u } }) => {
       try {
+        // We still need the session object for the context, so we'll get it from getSession (cached)
+        // after getUser (verified) succeeds or fails.
+        const { data: { session: s } } = await supabase.auth.getSession();
+        
         setSession(s);
-        setUser(s?.user ?? null);
-        if (s?.user) {
-          const prof = await fetchProfile(s.user.id);
+        setUser(u);
+        if (u && !isSigningIn.current) {
+          const prof = await fetchProfile(u.id);
           await validateDeviceSession(prof);
         }
       } catch (err) {
@@ -105,10 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setSession(s);
         setUser(s?.user ?? null);
-        if (s?.user) {
+        if (s?.user && !isSigningIn.current) {
           const prof = await fetchProfile(s.user.id);
           await validateDeviceSession(prof);
-        } else {
+        } else if (!s?.user) {
           setProfile(null);
         }
       } catch (err) {
@@ -118,33 +127,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [fetchProfile, validateDeviceSession]);
+    // Realtime subscription for profile changes (to detect if another device logged in)
+    let profileChannel: any = null;
+    if (user?.id) {
+      profileChannel = supabase
+        .channel(`profile-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "profiles",
+            filter: `id=eq.${user.id}`,
+          },
+          (payload) => {
+            const newProf = payload.new as Profile;
+            validateDeviceSession(newProf);
+          }
+        )
+        .subscribe();
+    }
+
+    return () => {
+      subscription.unsubscribe();
+      if (profileChannel) {
+        supabase.removeChannel(profileChannel);
+      }
+    };
+  }, [user?.id, fetchProfile, validateDeviceSession]);
 
   const signIn = async (email: string, password: string) => {
     setSessionError(null);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) return { error: error.message };
-
-    // After successful login:
-    // 1. Sign out all other sessions for this user
+    isSigningIn.current = true;
     try {
-      await supabase.auth.signOut({ scope: "others" });
-    } catch {
-      // Non-critical — some Supabase versions may not support this
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        isSigningIn.current = false;
+        return { error: error.message };
+      }
+
+      // After successful login:
+      // 1. Sign out all other sessions for this user
+      try {
+        await supabase.auth.signOut({ scope: "others" });
+      } catch {
+        // Non-critical — some Supabase versions may not support this
+      }
+
+      // 2. Write device_id to profile so other tabs/devices can detect it
+      const deviceId = getDeviceId();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updateError } = await (supabase.from("profiles") as any)
+        .update({ active_device_id: deviceId })
+        .eq("id", data.user.id);
+
+      if (updateError) {
+        console.error("Profile device_id update error:", updateError);
+        // Non-critical but worth logging
+      }
+
+      // 3. IMPORTANT: Re-fetch profile to update local state and confirm login
+      await fetchProfile(data.user.id);
+
+      // Successfully updated profile, now safe to allow validation again
+      // We wait 500ms to ensure all in-flight auth listeners reach the skip check
+      setTimeout(() => {
+        isSigningIn.current = false;
+      }, 500);
+      
+      return { error: null };
+    } catch (err: any) {
+      isSigningIn.current = false;
+      console.error("Sign in failed:", err);
+      return { error: err.message ?? "An unexpected error occurred during sign in." };
     }
-
-    // 2. Write device_id to profile so other tabs/devices can detect it
-    const deviceId = getDeviceId();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from("profiles") as any)
-      .update({ active_device_id: deviceId })
-      .eq("id", data.user.id);
-
-    return { error: null };
   };
 
   const signOut = async () => {
@@ -161,11 +220,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   };
 
+  const clearError = () => {
+    setSessionError(null);
+  };
+
   const isAdmin = profile?.role === "admin";
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, session, isAdmin, isLoading, sessionError, signIn, signOut }}
+      value={{ user, profile, session, isAdmin, isLoading, sessionError, signIn, signOut, clearError }}
     >
       {children}
     </AuthContext.Provider>

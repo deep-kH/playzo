@@ -38,12 +38,25 @@ export function useLiveMatch<T>({ matchId, initialState }: UseLiveMatchOptions<T
   // Initial load
   useEffect(() => {
     let isMounted = true;
+    
+    // Safety timeout: forcefully clear loading after 10 seconds if still stuck
+    const timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn(`useLiveMatch: Loading timeout for match ${matchId}`);
+        setLoading(false);
+        setError("Loading took too long. Please check your connection.");
+      }
+    }, 10000);
+
     if (!matchId || matchId === "undefined") {
       setError("No match ID provided.");
       setLoading(false);
+      clearTimeout(timeoutId);
       return;
     }
+
     async function init() {
+      setLoading(true); // Reset loading when matchId changes
       try {
         const m: any = await getMatchDetails(matchId);
         if (!m) {
@@ -63,7 +76,6 @@ export function useLiveMatch<T>({ matchId, initialState }: UseLiveMatchOptions<T
         if (isMounted && lsState?.state) {
           setState(lsState.state as T);
         }
-        // If no state row exists, keep initialState — match hasn't started yet
       } catch (err: any) {
         console.error("Match init failed:", err);
         if (isMounted) {
@@ -72,6 +84,7 @@ export function useLiveMatch<T>({ matchId, initialState }: UseLiveMatchOptions<T
       } finally {
         if (isMounted) {
           setLoading(false);
+          clearTimeout(timeoutId);
         }
       }
     }
@@ -79,6 +92,7 @@ export function useLiveMatch<T>({ matchId, initialState }: UseLiveMatchOptions<T
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, [matchId]);
 

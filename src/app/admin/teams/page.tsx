@@ -54,21 +54,31 @@ export default function TeamsPage() {
     e.preventDefault();
     setSaving(true);
 
-    if (editingTeam) {
-      await updateTeamAdmin({ id: editingTeam.id, name, sport });
-    } else {
-      await createTeamAdmin({ name, sport });
+    try {
+      if (editingTeam) {
+        await updateTeamAdmin({ id: editingTeam.id, name, sport });
+      } else {
+        await createTeamAdmin({ name, sport });
+      }
+      resetForm();
+      await fetchTeams();
+    } catch (err: any) {
+      console.error("Failed to save team:", err);
+      alert(err.message ?? "Failed to save team. Please try again.");
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-    resetForm();
-    fetchTeams();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this team? This will also remove all associated players.")) return;
-    await deleteTeamAdmin(id);
-    fetchTeams();
+    try {
+      await deleteTeamAdmin(id);
+      await fetchTeams();
+    } catch (err: any) {
+      console.error("Failed to delete team:", err);
+      alert(err.message ?? "Failed to delete team.");
+    }
   };
 
   return (
