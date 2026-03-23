@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LiveScore — Real-time Sports Scoring",
+  title: "Playzo — Real-time Sports Scoring",
   description:
     "Fast, reliable, mobile-first live scoring platform for local tournaments. Track cricket, football, and badminton matches in real time.",
   keywords: ["live score", "cricket", "tournament", "sports", "real-time"],

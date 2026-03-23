@@ -56,7 +56,7 @@ function AdminHeader() {
             </svg>
           </div>
           <span className="font-bold text-lg text-text tracking-tight">
-            LiveScore
+            Playzo
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded-md">
             Admin

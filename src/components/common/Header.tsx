@@ -33,7 +33,7 @@ export function Header() {
             </svg>
           </div>
           <span className="font-bold text-lg text-text tracking-tight">
-            LiveScore
+            Playzo
           </span>
         </Link>
 

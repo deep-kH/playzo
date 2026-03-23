@@ -23,7 +23,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className="mb-10 md:mb-14">
         <h1 className="text-3xl md:text-4xl font-bold text-text mb-3">
-          Live Sports Scoring
+          Playzo - Live Sports Scoring
         </h1>
         <p className="text-lg text-text-muted max-w-xl">
           Follow your favourite local tournaments in real time. Ball-by-ball
