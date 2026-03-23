@@ -34,9 +34,14 @@ export default function TournamentsPage() {
   const [showTeamSelector, setShowTeamSelector] = useState(false);
 
   const fetchTournaments = useCallback(async () => {
-    const data = await listTournamentsAdmin();
-    setTournaments((data as Tournament[]) ?? []);
-    setLoading(false);
+    try {
+      const data = await listTournamentsAdmin();
+      setTournaments((data as Tournament[]) ?? []);
+    } catch (err) {
+      console.error("Failed to fetch tournaments:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {

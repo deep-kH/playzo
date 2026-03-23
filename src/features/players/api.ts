@@ -5,7 +5,7 @@ export async function fetchPlayersForTeam(teamId: string): Promise<Player[]> {
   const { data, error } = await supabase
     .from("players")
     .select("*")
-    .or(`team_id.eq.${teamId},sold_team_id.eq.${teamId}`)
+    .eq("team_id", teamId)
     .order("name");
 
   if (error) throw new Error(error.message);

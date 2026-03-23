@@ -48,13 +48,18 @@ export default function PlayersPage() {
   const [selectedSport, setSelectedSport] = useState<string>("");
 
   const fetchData = useCallback(async () => {
-    const [playersData, teamsData] = await Promise.all([
-      listPlayersAdmin(),
-      listTeamsForPlayersAdmin(),
-    ]);
-    setPlayers((playersData as Player[]) ?? []);
-    setTeams((teamsData as Team[]) ?? []);
-    setLoading(false);
+    try {
+      const [playersData, teamsData] = await Promise.all([
+        listPlayersAdmin(),
+        listTeamsForPlayersAdmin(),
+      ]);
+      setPlayers((playersData as Player[]) ?? []);
+      setTeams((teamsData as Team[]) ?? []);
+    } catch (err) {
+      console.error("Failed to fetch players:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -140,8 +145,8 @@ export default function PlayersPage() {
 
   const filteredPlayers = filterTeam
     ? filterTeam === "unassigned"
-      ? players.filter((p) => !(p.team_id || p.sold_team_id))
-      : players.filter((p) => (p.team_id || p.sold_team_id) === filterTeam)
+      ? players.filter((p) => !p.team_id)
+      : players.filter((p) => p.team_id === filterTeam)
     : players;
 
   const getTeamName = (tId: string | null) =>
@@ -317,7 +322,7 @@ export default function PlayersPage() {
                 <div className="min-w-0">
                   <p className="font-semibold text-text truncate">{player.name}</p>
                   <p className="text-xs text-text-muted">
-                    {getTeamName(player.team_id || player.sold_team_id)} · <span className="capitalize">{player.role}</span>
+                    {getTeamName(player.team_id)} · <span className="capitalize">{player.role}</span>
                   </p>
                 </div>
               </div>

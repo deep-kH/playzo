@@ -40,7 +40,7 @@ export async function listPlayersForMatch(match: Match): Promise<Player[]> {
     .from("players")
     .select("*")
     .or(
-      `team_id.in.(${match.team_a_id},${match.team_b_id}),sold_team_id.in.(${match.team_a_id},${match.team_b_id})`
+      `team_id.in.(${match.team_a_id},${match.team_b_id})`
     );
   if (error) throw new Error(error.message);
   return (data as Player[]) ?? [];

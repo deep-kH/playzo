@@ -84,28 +84,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        const prof = await fetchProfile(s.user.id);
-        await validateDeviceSession(prof);
+      try {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) {
+          const prof = await fetchProfile(s.user.id);
+          await validateDeviceSession(prof);
+        }
+      } catch (err) {
+        console.error("Auth session init error:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        const prof = await fetchProfile(s.user.id);
-        await validateDeviceSession(prof);
-      } else {
-        setProfile(null);
+      try {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) {
+          const prof = await fetchProfile(s.user.id);
+          await validateDeviceSession(prof);
+        } else {
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error("Auth state change error:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();

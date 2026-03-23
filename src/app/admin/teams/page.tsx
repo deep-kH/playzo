@@ -17,13 +17,18 @@ export default function TeamsPage() {
   const [saving, setSaving] = useState(false);
 
   const fetchTeams = useCallback(async () => {
-    const [teamsRes, playersRes] = await Promise.all([
-      listTeamsAdmin(),
-      listPlayersAdmin(),
-    ]);
-    setTeams((teamsRes as Team[]) ?? []);
-    setPlayers((playersRes as Player[]) ?? []);
-    setLoading(false);
+    try {
+      const [teamsRes, playersRes] = await Promise.all([
+        listTeamsAdmin(),
+        listPlayersAdmin(),
+      ]);
+      setTeams((teamsRes as Team[]) ?? []);
+      setPlayers((playersRes as Player[]) ?? []);
+    } catch (err) {
+      console.error("Failed to fetch teams:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -151,7 +156,7 @@ export default function TeamsPage() {
       ) : (
         <div className="space-y-3">
           {teams.map((team) => {
-            const teamPlayers = players.filter((p) => (p.team_id || p.sold_team_id) === team.id);
+            const teamPlayers = players.filter((p) => p.team_id === team.id);
             const isExpanded = expandedTeamId === team.id;
             return (
             <div key={team.id} className="card flex flex-col gap-4">

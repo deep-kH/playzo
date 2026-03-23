@@ -63,44 +63,48 @@ export default function MatchesPage() {
   const [fbMatchDuration, setFbMatchDuration] = useState(90);
 
   const fetchData = useCallback(async () => {
-    const [t, matchData, ttRes] = await Promise.all([
-      getTournamentById(tournamentId),
-      listMatchesByTournamentId(tournamentId),
-      getTournamentTeams(tournamentId),
-    ]);
+    try {
+      const [t, matchData, ttRes] = await Promise.all([
+        getTournamentById(tournamentId),
+        listMatchesByTournamentId(tournamentId),
+        getTournamentTeams(tournamentId),
+      ]);
 
-    setTournament(t as Tournament | null);
-    setMatches(matchData);
+      setTournament(t as Tournament | null);
+      setMatches(matchData);
 
-    const teamIds = ttRes.map((tt) => tt.team_id);
-    setTournamentTeamIds(teamIds);
+      const teamIds = ttRes.map((tt) => tt.team_id);
+      setTournamentTeamIds(teamIds);
 
-    const teamsData = teamIds.length > 0 ? await getTeamsByIds(teamIds) : [];
-    setTeams(teamsData);
+      const teamsData = teamIds.length > 0 ? await getTeamsByIds(teamIds) : [];
+      setTeams(teamsData);
 
-    // If teams already exist and matches have been created, consider teams finalized
-    const isFinalized = teamIds.length >= 2;
-    setTeamsFinalized(isFinalized);
+      // If teams already exist and matches have been created, consider teams finalized
+      const isFinalized = teamIds.length >= 2;
+      setTeamsFinalized(isFinalized);
 
-    // Auto-switch to matches tab if teams are finalized and matches exist
-    if (isFinalized && matchData.length > 0) {
-      setActiveTab("matches");
-    }
-
-    // Load all sport teams for the selector
-    if (t) {
-      const sportTeams = await listTeamsBySportAdmin(t.sport);
-      setAllSportTeams((sportTeams as Team[]) ?? []);
-
-      // For badminton: also load all players from tournament teams
-      if (t.sport === "badminton" && teamIds.length > 0) {
-        const playerPromises = teamIds.map((tid) => fetchPlayersForTeam(tid));
-        const playerArrays = await Promise.all(playerPromises);
-        setAllPlayers(playerArrays.flat());
+      // Auto-switch to matches tab if teams are finalized and matches exist
+      if (isFinalized && matchData.length > 0) {
+        setActiveTab("matches");
       }
-    }
 
-    setLoading(false);
+      // Load all sport teams for the selector
+      if (t) {
+        const sportTeams = await listTeamsBySportAdmin(t.sport);
+        setAllSportTeams((sportTeams as Team[]) ?? []);
+
+        // For badminton: also load all players from tournament teams
+        if (t.sport === "badminton" && teamIds.length > 0) {
+          const playerPromises = teamIds.map((tid) => fetchPlayersForTeam(tid));
+          const playerArrays = await Promise.all(playerPromises);
+          setAllPlayers(playerArrays.flat());
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch match data:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [tournamentId]);
 
   useEffect(() => {
@@ -189,10 +193,10 @@ export default function MatchesPage() {
         }
         // Derive players from each team
         const teamAPlayersForMatch = allPlayers.filter(
-          (p) => (p.team_id === bmTeamAId || p.sold_team_id === bmTeamAId)
+          (p) => (p.team_id === bmTeamAId)
         ).slice(0, 2);
         const teamBPlayersForMatch = allPlayers.filter(
-          (p) => (p.team_id === bmTeamBId || p.sold_team_id === bmTeamBId)
+          (p) => (p.team_id === bmTeamBId)
         ).slice(0, 2);
         if (teamAPlayersForMatch.length < 2 || teamBPlayersForMatch.length < 2) {
           alert("Each team must have at least 2 players for doubles.");
@@ -511,7 +515,7 @@ export default function MatchesPage() {
                           {bmTeamAId && (
                             <div className="mt-1 text-xs text-[var(--text-muted)]">
                               Players: {allPlayers
-                                .filter((p) => p.team_id === bmTeamAId || p.sold_team_id === bmTeamAId)
+                                .filter((p) => p.team_id === bmTeamAId)
                                 .slice(0, 2)
                                 .map((p) => p.name)
                                 .join(" & ") || "No players"}
@@ -534,7 +538,7 @@ export default function MatchesPage() {
                           {bmTeamBId && (
                             <div className="mt-1 text-xs text-[var(--text-muted)]">
                               Players: {allPlayers
-                                .filter((p) => p.team_id === bmTeamBId || p.sold_team_id === bmTeamBId)
+                                .filter((p) => p.team_id === bmTeamBId)
                                 .slice(0, 2)
                                 .map((p) => p.name)
                                 .join(" & ") || "No players"}
@@ -742,7 +746,7 @@ export default function MatchesPage() {
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
-                        {match.status === "scheduled" && (
+                        {isBadminton && match.status === "scheduled" && (
                           <Link
                             href={`/admin/score/${match.id}`}
                             className="btn-primary text-xs !py-1 !px-2 no-underline"
@@ -752,19 +756,23 @@ export default function MatchesPage() {
                         )}
                         {match.status === "live" && (
                           <>
-                            <Link
-                              href={`/admin/score/${match.id}`}
-                              className="btn-primary text-xs !py-1 !px-2 no-underline"
-                            >
-                              ▶ Score
-                            </Link>
-                            <Link
-                              href={`/live/${match.id}`}
-                              target="_blank"
-                              className="btn-accent text-xs !py-1 !px-2 no-underline"
-                            >
-                              👀 Live URL
-                            </Link>
+                            {isBadminton && (
+                              <Link
+                                href={`/admin/score/${match.id}`}
+                                className="btn-primary text-xs !py-1 !px-2 no-underline"
+                              >
+                                ▶ Score
+                              </Link>
+                            )}
+                            {isBadminton && (
+                              <Link
+                                href={`/live/${match.id}`}
+                                target="_blank"
+                                className="btn-accent text-xs !py-1 !px-2 no-underline"
+                              >
+                                👀 Live URL
+                              </Link>
+                            )}
                             <button
                               onClick={() => updateStatus(match.id, "completed")}
                               className="btn-secondary text-xs !py-1 !px-2"

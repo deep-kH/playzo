@@ -59,7 +59,6 @@ export interface Player {
   role: string;
   status: string;
   sold_price: number | null;
-  sold_team_id: string | null;
   team_id: string | null;
   jersey_number: number | null;
   photo_url: string | null;

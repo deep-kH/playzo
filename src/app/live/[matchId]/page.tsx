@@ -38,6 +38,12 @@ export default function LiveMatchRouter() {
         return;
       }
 
+      // Hide all frontend paths except badminton for live view panel
+      if (sport !== "badminton") {
+        setError(`Live viewing for ${sport} matches is currently disabled.`);
+        return;
+      }
+
       // Redirect to the sport-specific live viewer
       router.replace(`/live/matches/${matchId}/${sport}`);
     }
