@@ -47,7 +47,7 @@ export function ScoreHeader({
                 </span>{" "}
                 from{" "}
                 <span className="font-bold">
-                  {(maxOvers - parseFloat(String(innings.total_overs ?? 0))).toFixed(1)}
+                  {(maxOvers - oversFloat).toFixed(1)}
                 </span>{" "}
                 ov
               </p>
