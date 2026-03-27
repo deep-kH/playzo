@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono, Oswald } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/common/ThemeProvider";
 import { AuthProvider } from "@/components/common/AuthProvider";
@@ -9,6 +9,13 @@ const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
+});
+
+const oswald = Oswald({
+  variable: "--font-oswald",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -32,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${geistMono.variable} font-sans antialiased min-h-screen flex flex-col`}
+        className={`${inter.variable} ${oswald.variable} ${geistMono.variable} font-sans antialiased min-h-screen flex flex-col`}
       >
         <ThemeProvider>
           <AuthProvider>

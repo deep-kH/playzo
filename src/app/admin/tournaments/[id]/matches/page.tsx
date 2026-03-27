@@ -62,6 +62,11 @@ export default function MatchesPage() {
   const [fbPlayersPerTeam, setFbPlayersPerTeam] = useState(11);
   const [fbMatchDuration, setFbMatchDuration] = useState(90);
 
+  // Cricket-specific
+  const [crOvers, setCrOvers] = useState(20);
+  const [crPlayersPerTeam, setCrPlayersPerTeam] = useState(11);
+  const [crMinBowlers, setCrMinBowlers] = useState(5);
+
   const fetchData = useCallback(async () => {
     try {
       const [t, matchData, ttRes] = await Promise.all([
@@ -140,6 +145,7 @@ export default function MatchesPage() {
   };
 
   const isBadminton = tournament?.sport === "badminton";
+  const hasScorer = tournament?.sport === "badminton" || tournament?.sport === "cricket";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,6 +239,8 @@ export default function MatchesPage() {
       
       const extraSettings = tournament?.sport === "football" 
         ? { sport: "football", match_duration_minutes: fbMatchDuration, players_per_team: fbPlayersPerTeam } 
+        : tournament?.sport === "cricket"
+        ? { sport: "cricket", overs_per_innings: crOvers, players_per_team: crPlayersPerTeam, min_bowlers: crMinBowlers }
         : { sport: tournament?.sport };
 
       await createMatch({
@@ -259,6 +267,9 @@ export default function MatchesPage() {
     setBmPointCap(30);
     setFbPlayersPerTeam(11);
     setFbMatchDuration(90);
+    setCrOvers(20);
+    setCrPlayersPerTeam(11);
+    setCrMinBowlers(5);
     fetchData();
   };
 
@@ -680,6 +691,55 @@ export default function MatchesPage() {
                         </div>
                       </div>
                     )}
+                    {tournament?.sport === "cricket" && (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 space-y-3">
+                        <h4 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                          ⚙️ Match Settings
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                              Players per Team
+                            </label>
+                            <input
+                              type="number"
+                              min={2}
+                              max={15}
+                              value={crPlayersPerTeam}
+                              onChange={(e) => setCrPlayersPerTeam(parseInt(e.target.value) || 11)}
+                              className="input-field"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                              Overs per Innings
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={crOvers}
+                              onChange={(e) => setCrOvers(parseInt(e.target.value) || 20)}
+                              className="input-field"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">
+                              Min Bowlers
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={11}
+                              value={crMinBowlers}
+                              onChange={(e) => setCrMinBowlers(parseInt(e.target.value) || 5)}
+                              className="input-field"
+                            />
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Max {Math.ceil(crOvers / (crMinBowlers || 1))} ov/bowler</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -746,7 +806,7 @@ export default function MatchesPage() {
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
-                        {isBadminton && match.status === "scheduled" && (
+                        {hasScorer && match.status === "scheduled" && (
                           <Link
                             href={`/admin/score/${match.id}`}
                             className="btn-primary text-xs !py-1 !px-2 no-underline"
@@ -756,7 +816,7 @@ export default function MatchesPage() {
                         )}
                         {match.status === "live" && (
                           <>
-                            {isBadminton && (
+                            {hasScorer && (
                               <Link
                                 href={`/admin/score/${match.id}`}
                                 className="btn-primary text-xs !py-1 !px-2 no-underline"
@@ -764,9 +824,9 @@ export default function MatchesPage() {
                                 ▶ Score
                               </Link>
                             )}
-                            {isBadminton && (
+                            {hasScorer && (
                               <Link
-                                href={`/live/${match.id}`}
+                                href={`/live/matches/${match.id}/${tournament?.sport}`}
                                 target="_blank"
                                 className="btn-accent text-xs !py-1 !px-2 no-underline"
                               >

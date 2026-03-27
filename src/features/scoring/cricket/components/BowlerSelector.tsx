@@ -7,6 +7,8 @@ interface BowlerSelectorProps {
   lastBowlerId: string | null;
   maxOvers?: number;
   bowlingStats?: BowlingStats[];
+  mustUseNewBowler?: boolean;
+  usedBowlerIds?: Set<string>;
   onSelect: (bowlerId: string) => void;
 }
 
@@ -15,16 +17,23 @@ export function BowlerSelector({
   lastBowlerId,
   maxOvers,
   bowlingStats = [],
+  mustUseNewBowler = false,
+  usedBowlerIds = new Set(),
   onSelect,
 }: BowlerSelectorProps) {
   // Filter out the bowler who just bowled (can't bowl consecutive overs)
-  // And filter out bowlers who have reached their max overs
+  // Filter out bowlers who have reached their max overs
+  // Filter out already used bowlers if we must use a new one to meet min_bowlers
   const eligible = bowlers.filter((b) => {
     if (b.id === lastBowlerId) return false;
 
     if (maxOvers) {
       const stat = bowlingStats.find((s) => s.player_id === b.id);
       if (stat && Math.floor(stat.overs) >= maxOvers) return false;
+    }
+
+    if (mustUseNewBowler && usedBowlerIds.has(b.id)) {
+      return false; // Force selection of a player who hasn't bowled
     }
 
     return true;

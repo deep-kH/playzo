@@ -7,6 +7,7 @@ import type {
   BattingStats,
   BowlingStats,
 } from "@/lib/types/database";
+import { toRealOvers, formatOvers } from "@/features/scoring/cricket/oversUtils";
 
 interface ScoringHeaderProps {
   innings: Innings;
@@ -19,6 +20,7 @@ interface ScoringHeaderProps {
   bowlerStats: BowlingStats | null;
   battingTeamName: string;
   target: number | null;
+  maxOvers?: number;
 }
 
 export function ScoringHeader({
@@ -32,19 +34,17 @@ export function ScoringHeader({
   bowlerStats,
   battingTeamName,
   target,
+  maxOvers = 20,
 }: ScoringHeaderProps) {
-  const crr =
-    innings.total_overs > 0
-      ? (innings.total_runs / parseFloat(String(innings.total_overs))).toFixed(2)
-      : "0.00";
+  const realOvers = toRealOvers(innings.total_overs);
+  const crr = realOvers > 0 ? (innings.total_runs / realOvers).toFixed(2) : "0.00";
 
   const rrr =
-    target && innings.total_overs > 0
+    target && realOvers > 0
       ? (() => {
-          const maxOvers = 20; // will be passed properly later
-          const remaining = maxOvers - parseFloat(String(innings.total_overs));
+          const remainingOvers = toRealOvers(maxOvers) - realOvers;
           const needed = target - innings.total_runs;
-          return remaining > 0 ? (needed / remaining).toFixed(2) : "—";
+          return remainingOvers > 0 ? (needed / remainingOvers).toFixed(2) : "—";
         })()
       : null;
 

@@ -96,14 +96,14 @@ export function MatchCard({
 
       {/* Footer */}
       <div className="mt-4 pt-3 border-t border-[var(--border-ui)]/50 flex flex-col gap-2">
-        {isBadminton && (isLive || isCompleted) && (
+        {(isLive || isCompleted) && (
           <div className="flex items-center justify-between text-xs font-semibold">
             {isLive ? (
               <span className="text-[var(--accent)] flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" /> Watch Live
               </span>
             ) : (
-              <span className="text-[var(--text-muted)]">Post-Match Summary →</span>
+              <span className="text-[var(--text-muted)]">View Result →</span>
             )}
           </div>
         )}
@@ -111,7 +111,7 @@ export function MatchCard({
         {isScheduled && (
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-[var(--text-muted)]">Scheduled</span>
-            {isAdmin && isBadminton ? (
+            {isAdmin ? (
                <Link href={adminScoreHref} className="text-xs font-semibold text-[var(--primary)] hover:underline">
                  Start Match →
                </Link>
@@ -152,8 +152,8 @@ export function MatchCard({
     );
   }
 
-  // Live or Completed: Entire card is a link if it's badminton
-  if (isBadminton) {
+  // Live or Completed: Entire card is a link for ALL sports
+  if (isLive || isCompleted) {
     return (
       <Link href={liveOrCompletedHref} className="block no-underline">
         {CardContent}
@@ -161,7 +161,7 @@ export function MatchCard({
     );
   }
 
-  // Fallback for non-badminton matches
+  // Fallback
   return (
     <div className="cursor-pointer" onClick={() => setExpanded(!expanded)}>
       {CardContent}

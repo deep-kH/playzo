@@ -37,8 +37,9 @@ export default function AdminScoreRouter() {
         return;
       }
 
-      // Hide all frontend paths except badminton for admin scoring panel
-      if (sport !== "badminton") {
+      // Supported scoring sports
+      const supportedSports = ["badminton", "cricket"];
+      if (!supportedSports.includes(sport)) {
         setError(`Scoring for ${sport} matches is currently disabled.`);
         return;
       }

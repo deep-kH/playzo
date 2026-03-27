@@ -8,6 +8,26 @@ import type {
   Player,
   Team,
 } from "@/lib/types/database";
+import { CricketMatchState, DEFAULT_CRICKET_STATE } from "./types";
+
+export function buildCricketState(m: Match | null, ms: MatchState | null, inn: Innings | null): CricketMatchState {
+  return {
+    ...DEFAULT_CRICKET_STATE,
+    matchStatus: (m?.status as "scheduled" | "live" | "completed" | "paused") ?? "scheduled",
+    inningsStatus: inn?.status === "completed" ? "ended" : (inn?.status === "in_progress" ? "live" : "not_started"),
+    currentInningsNumber: (inn?.innings_number as 1 | 2) ?? 1,
+    target: ms?.target_score ?? undefined,
+    striker: ms?.striker_id ?? null,
+    nonStriker: ms?.non_striker_id ?? null,
+    bowler: ms?.current_bowler_id ?? null,
+    runs: ms?.score_runs ?? 0,
+    wickets: ms?.score_wickets ?? 0,
+    overs: ms?.score_overs ?? 0,
+    extras: ms?.score_extras ?? 0,
+    ballsInOver: ms?.current_ball ?? 0,
+    lastEvent: ms?.last_event ?? undefined,
+  };
+}
 
 export async function getMatchById(matchId: string): Promise<Match | null> {
   const { data, error } = await supabase
@@ -39,9 +59,7 @@ export async function listPlayersForMatch(match: Match): Promise<Player[]> {
   const { data, error } = await supabase
     .from("players")
     .select("*")
-    .or(
-      `team_id.in.(${match.team_a_id},${match.team_b_id})`
-    );
+    .in("team_id", [match.team_a_id, match.team_b_id]);
   if (error) throw new Error(error.message);
   return (data as Player[]) ?? [];
 }

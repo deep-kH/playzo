@@ -67,11 +67,7 @@ export default function TournamentsPage() {
 
     try {
       const settings: Record<string, unknown> = {};
-      if (sport === "cricket") {
-        settings.overs = parseInt(overs);
-        settings.players_per_team = parseInt(playersPerTeam);
-        settings.max_overs_per_bowler = parseInt(maxOversPerBowler);
-      }
+
 
       await createTournamentAdmin({
         name,
@@ -178,31 +174,19 @@ export default function TournamentsPage() {
                   <option value="badminton">🏸 Badminton</option>
                 </select>
               </div>
-              <div>
-                <label htmlFor="t-location" className="block text-sm font-medium text-text mb-1.5">Location</label>
-                <input id="t-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} className="input-field" />
-              </div>
-              <div>
-                <label htmlFor="t-start" className="block text-sm font-medium text-text mb-1.5">Start Date</label>
-                <input id="t-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" />
-              </div>
-              <div>
-                <label htmlFor="t-end" className="block text-sm font-medium text-text mb-1.5">End Date</label>
-                <input id="t-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field" />
-              </div>
-              {sport === "cricket" && (
+              {sport !== "cricket" && (
                 <>
                   <div>
-                    <label htmlFor="t-overs" className="block text-sm font-medium text-text mb-1.5">Overs per Innings</label>
-                    <input id="t-overs" type="number" value={overs} onChange={(e) => setOvers(e.target.value)} className="input-field" min="1" max="50" />
+                    <label htmlFor="t-location" className="block text-sm font-medium text-text mb-1.5">Location</label>
+                    <input id="t-location" type="text" value={location} onChange={(e) => setLocation(e.target.value)} className="input-field" />
                   </div>
                   <div>
-                    <label htmlFor="t-players" className="block text-sm font-medium text-text mb-1.5">Players per Team</label>
-                    <input id="t-players" type="number" value={playersPerTeam} onChange={(e) => setPlayersPerTeam(e.target.value)} className="input-field" min="2" max="15" />
+                    <label htmlFor="t-start" className="block text-sm font-medium text-text mb-1.5">Start Date</label>
+                    <input id="t-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input-field" />
                   </div>
                   <div>
-                    <label htmlFor="t-maxOvers" className="block text-sm font-medium text-text mb-1.5">Max Overs / Bowler</label>
-                    <input id="t-maxOvers" type="number" value={maxOversPerBowler} onChange={(e) => setMaxOversPerBowler(e.target.value)} className="input-field" min="1" max="50" />
+                    <label htmlFor="t-end" className="block text-sm font-medium text-text mb-1.5">End Date</label>
+                    <input id="t-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input-field" />
                   </div>
                 </>
               )}
@@ -297,6 +281,16 @@ export default function TournamentsPage() {
                   <Link href={`/admin/tournaments/${t.id}/matches`} className="btn-secondary text-xs !py-1.5 !px-2.5 no-underline">
                     Matches
                   </Link>
+                  {t.sport === "cricket" && (
+                    <>
+                      <Link href={`/admin/tournaments/${t.id}/cricket/standings`} className="btn-secondary text-xs !py-1.5 !px-2.5 no-underline">
+                        Standings
+                      </Link>
+                      <Link href={`/admin/tournaments/${t.id}/cricket/stats`} className="btn-accent text-xs !py-1.5 !px-2.5 no-underline">
+                        Stats/MVP
+                      </Link>
+                    </>
+                  )}
                   <button onClick={() => handleDelete(t.id)} className="btn-danger text-xs !py-1.5 !px-2.5">
                     Delete
                   </button>

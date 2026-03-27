@@ -17,6 +17,7 @@
   --color-destructive: var(--danger);
   --color-warning: var(--warning);
   --font-sans: var(--font-inter);
+  --font-heading: var(--font-oswald);
   --font-mono: var(--font-geist-mono);
 
   /* Fluid Typography */
@@ -526,3 +527,12 @@ body {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+/* Hide scrollbar for horizontal tabs */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

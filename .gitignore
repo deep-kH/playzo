@@ -42,5 +42,8 @@ next-env.d.ts
 .env.local
 repomix-output.md
 docs/
-supabase/Livescore.sql
-supabase/LiveScore.sql
+repomix-output.*
+livescore.json
+supabase/livescore.sql
+lint_output.txt
+lint_output_utf8.txt

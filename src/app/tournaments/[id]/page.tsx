@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import type { Tournament, Match, Team } from "@/lib/types/database";
 import { MatchCard } from "@/components/common/MatchCard";
 import { getTournamentById } from "@/features/tournaments/api";
@@ -101,6 +102,23 @@ export default function TournamentDetailPage() {
           {tournament.sport}
           {tournament.location ? ` · ${tournament.location}` : ""}
         </p>
+
+        {tournament.sport === "cricket" && (
+          <div className="flex gap-3 mt-4">
+            <Link
+              href={`/tournaments/${tournament.id}/cricket/standings`}
+              className="btn-accent text-sm !py-2 !px-4 no-underline"
+            >
+              📊 Points Table
+            </Link>
+            <Link
+              href={`/tournaments/${tournament.id}/cricket/stats`}
+              className="btn-accent text-sm !py-2 !px-4 no-underline"
+            >
+              ⭐ Stats & MVP
+            </Link>
+          </div>
+        )}
       </div>
 
       {matches.length === 0 ? (
