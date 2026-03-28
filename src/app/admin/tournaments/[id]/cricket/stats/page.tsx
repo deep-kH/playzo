@@ -313,58 +313,95 @@ export default function TournamentCricketStatsPage() {
         </p>
       </div>
 
-      {/* ═══ HERO BANNER ═══ */}
+      {/* ═══ HERO CARD ═══ */}
       {heroPlayer && (
         <div
-          className="relative rounded-2xl overflow-hidden"
+          className="relative rounded-2xl overflow-hidden group"
           style={{
-            background: `linear-gradient(135deg, ${heroPlayer.teamColor}22 0%, ${catColor}15 50%, ${heroPlayer.teamColor}08 100%)`,
-            border: `1px solid ${catColor}30`,
+            background: `linear-gradient(135deg, ${heroPlayer.teamColor}18 0%, ${catColor}12 40%, ${heroPlayer.teamColor}08 100%)`,
+            border: `1.5px solid ${catColor}30`,
           }}
         >
-          <div className="flex items-center gap-4 md:gap-6 p-4 md:p-6 relative z-10">
-            {/* Rank number */}
-            <div
-              className="absolute right-4 top-2 text-[6rem] md:text-[8rem] font-black leading-none select-none pointer-events-none"
-              style={{ fontFamily: "var(--font-oswald)", color: `${catColor}12`, opacity: 0.15 }}
-            >
-              1
+          {/* Animated background particles */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="hero-particle hero-particle-1" style={{ background: catColor }} />
+            <div className="hero-particle hero-particle-2" style={{ background: heroPlayer.teamColor }} />
+            <div className="hero-particle hero-particle-3" style={{ background: catColor }} />
+            {/* Gradient shine sweep */}
+            <div className="hero-shine" />
+          </div>
+
+          {/* Giant rank watermark */}
+          <div
+            className="absolute -right-2 -top-4 md:-right-4 md:-top-6 text-[8rem] md:text-[12rem] font-black leading-none select-none pointer-events-none"
+            style={{ fontFamily: "var(--font-oswald)", color: `${catColor}`, opacity: 0.06 }}
+          >
+            1
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 md:gap-8 p-5 md:p-8 relative z-10">
+            {/* Player photo - HERO SIZE */}
+            <div className="relative flex-shrink-0 hero-photo-entrance w-32 sm:w-40 md:w-52 aspect-[3/4]">
+              {/* Pulse ring */}
+              <div
+                className="absolute inset-0 rounded-2xl animate-pulse-ring"
+                style={{ border: `2px solid ${catColor}`, opacity: 0.4 }}
+              />
+              {heroPlayer.playerPhoto ? (
+                <img
+                  src={heroPlayer.playerPhoto}
+                  alt={heroPlayer.playerName}
+                  className="w-full h-full rounded-2xl object-cover shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                  style={{
+                    border: `3px solid ${catColor}`,
+                    boxShadow: `0 0 30px ${catColor}25, 0 8px 32px rgba(0,0,0,0.3)`,
+                  }}
+                />
+              ) : (
+                <div
+                  className="w-full h-full rounded-2xl flex items-center justify-center text-6xl sm:text-7xl md:text-8xl font-black shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                  style={{
+                    background: `linear-gradient(135deg, ${heroPlayer.teamColor}, ${catColor})`,
+                    color: "#fff",
+                    fontFamily: "var(--font-oswald)",
+                    boxShadow: `0 0 30px ${catColor}25, 0 8px 32px rgba(0,0,0,0.3)`,
+                  }}
+                >
+                  {heroPlayer.playerName.charAt(0)}
+                </div>
+              )}
+              {/* Category badge */}
+              {/* <div
+                className="absolute -bottom-2 -right-2 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-lg md:text-xl shadow-lg hero-badge-bounce"
+                style={{ background: catColor, boxShadow: `0 4px 15px ${catColor}50` }}
+              >
+                {CATEGORIES.find((c) => c.id === category)?.emoji}
+              </div> */}
             </div>
 
-            {/* Player photo */}
-            {heroPlayer.playerPhoto ? (
-              <img
-                src={heroPlayer.playerPhoto}
-                alt={heroPlayer.playerName}
-                className="w-20 h-20 md:w-28 md:h-28 rounded-2xl object-cover flex-shrink-0 shadow-lg"
-                style={{ border: `3px solid ${catColor}` }}
-              />
-            ) : (
-              <div
-                className="w-20 h-20 md:w-28 md:h-28 rounded-2xl flex items-center justify-center text-3xl md:text-5xl font-black flex-shrink-0"
-                style={{
-                  background: `linear-gradient(135deg, ${heroPlayer.teamColor}, ${catColor})`,
-                  color: "#fff",
-                  fontFamily: "var(--font-oswald)",
-                }}
-              >
-                {heroPlayer.playerName.charAt(0)}
-              </div>
-            )}
-
-            <div className="flex-1 min-w-0 relative z-10">
+            <div className="flex-1 min-w-0 relative z-10 text-center sm:text-left">
+              {/* Category label */}
               <p
-                className="text-xl md:text-3xl font-bold uppercase tracking-wide truncate"
-                style={{ fontFamily: "var(--font-oswald)", color: "var(--text)" }}
+                className="text-[10px] md:text-xs uppercase tracking-[0.25em] font-bold mb-1 hero-text-entrance"
+                style={{ color: catColor, animationDelay: "0.1s" }}
+              >
+                {CATEGORIES.find((c) => c.id === category)?.label}
+              </p>
+              <p
+                className="text-2xl sm:text-3xl md:text-4xl font-black uppercase tracking-wide truncate hero-text-entrance"
+                style={{ fontFamily: "var(--font-oswald)", color: "var(--text)", animationDelay: "0.15s" }}
               >
                 {heroPlayer.playerName}
               </p>
-              <p className="text-xs md:text-sm uppercase tracking-widest mt-0.5" style={{ color: heroPlayer.teamColor }}>
+              <p
+                className="text-sm md:text-base uppercase tracking-widest mt-0.5 font-semibold hero-text-entrance"
+                style={{ color: heroPlayer.teamColor, animationDelay: "0.2s" }}
+              >
                 {heroPlayer.teamName}
               </p>
 
-              {/* Stat chips */}
-              <div className="flex flex-wrap gap-2 mt-3">
+              {/* Stat chips — larger and animated */}
+              <div className="flex flex-wrap justify-center sm:justify-start gap-2 md:gap-3 mt-4">
                 {[
                   { label: primaryStat(heroPlayer).label, value: primaryStat(heroPlayer).value, highlight: true },
                   { label: "MAT", value: heroPlayer.matches },
@@ -377,19 +414,21 @@ export default function TournamentCricketStatsPage() {
                 ].map((chip, i) => (
                   <div
                     key={i}
-                    className="rounded-lg px-2.5 py-1.5 text-center"
+                    className="rounded-xl px-3 py-2 text-center min-w-[60px] md:min-w-[72px] backdrop-blur-sm hero-chip-entrance"
                     style={{
                       background: chip.highlight ? `${catColor}20` : "var(--surface)",
-                      border: chip.highlight ? `1.5px solid ${catColor}` : "1px solid var(--border)",
+                      border: chip.highlight ? `2px solid ${catColor}` : "1px solid var(--border)",
+                      boxShadow: chip.highlight ? `0 0 12px ${catColor}15` : "none",
+                      animationDelay: `${0.25 + i * 0.08}s`,
                     }}
                   >
                     <p
-                      className="text-base md:text-lg font-bold tabular-nums"
+                      className="text-lg md:text-2xl font-black tabular-nums"
                       style={{ fontFamily: "var(--font-oswald)", color: chip.highlight ? catColor : "var(--text)" }}
                     >
                       {chip.value}
                     </p>
-                    <p className="text-[9px] md:text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                    <p className="text-[8px] md:text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-semibold">
                       {chip.label}
                     </p>
                   </div>
@@ -399,6 +438,84 @@ export default function TournamentCricketStatsPage() {
           </div>
         </div>
       )}
+
+      {/* Hero card animations */}
+      <style>{`
+        .hero-particle {
+          position: absolute;
+          border-radius: 50%;
+          opacity: 0.15;
+          filter: blur(40px);
+        }
+        .hero-particle-1 {
+          width: 120px; height: 120px;
+          top: -30px; left: 10%;
+          animation: float-particle 6s ease-in-out infinite;
+        }
+        .hero-particle-2 {
+          width: 80px; height: 80px;
+          bottom: -20px; right: 15%;
+          animation: float-particle 8s ease-in-out infinite 2s;
+        }
+        .hero-particle-3 {
+          width: 60px; height: 60px;
+          top: 50%; left: 60%;
+          animation: float-particle 7s ease-in-out infinite 4s;
+        }
+        @keyframes float-particle {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-20px) scale(1.15); }
+        }
+        .hero-shine {
+          position: absolute;
+          top: 0; left: -100%; width: 50%; height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+          animation: shine-sweep 4s ease-in-out infinite;
+        }
+        @keyframes shine-sweep {
+          0% { left: -100%; }
+          50%, 100% { left: 200%; }
+        }
+        @keyframes pulse-ring {
+          0%, 100% { transform: scale(1); opacity: 0.4; }
+          50% { transform: scale(1.06); opacity: 0.15; }
+        }
+        .animate-pulse-ring { animation: pulse-ring 3s ease-in-out infinite; }
+        .hero-photo-entrance {
+          animation: hero-photo-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes hero-photo-in {
+          from { opacity: 0; transform: scale(0.8) translateY(20px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .hero-text-entrance {
+          animation: hero-text-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes hero-text-in {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .hero-chip-entrance {
+          animation: hero-chip-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+        @keyframes hero-chip-in {
+          from { opacity: 0; transform: translateY(10px) scale(0.9); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .hero-badge-bounce {
+          animation: badge-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
+        }
+        @keyframes badge-bounce {
+          from { opacity: 0; transform: scale(0); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .player-row-photo {
+          transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .player-row-photo:hover {
+          transform: scale(1.15);
+        }
+      `}</style>
 
       {/* ═══ CATEGORY TABS ═══ */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
@@ -517,28 +634,33 @@ export default function TournamentCricketStatsPage() {
                       </td>
 
                       {/* Player */}
-                      <td className="py-2 px-3">
-                        <div className="flex items-center gap-2.5">
-                          {p.playerPhoto ? (
-                            <img
-                              src={p.playerPhoto}
-                              alt={p.playerName}
-                              className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
-                              style={{ border: `2px solid ${p.teamColor}` }}
-                            />
-                          ) : (
-                            <div
-                              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                              style={{ background: p.teamColor, fontFamily: "var(--font-oswald)" }}
-                            >
-                              {p.playerName.charAt(0)}
-                            </div>
-                          )}
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-3 md:gap-4">
+                          <div className="relative w-12 md:w-16 aspect-[3/4] flex-shrink-0">
+                            {p.playerPhoto ? (
+                              <img
+                                src={p.playerPhoto}
+                                alt={p.playerName}
+                                className="w-full h-full rounded-xl object-cover player-row-photo"
+                                style={{
+                                  border: `2px solid ${p.teamColor}`,
+                                  boxShadow: idx < 3 ? `0 0 10px ${p.teamColor}20` : "none",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                className="w-full h-full rounded-xl flex items-center justify-center text-lg md:text-2xl font-bold text-white player-row-photo"
+                                style={{ background: p.teamColor, fontFamily: "var(--font-oswald)" }}
+                              >
+                                {p.playerName.charAt(0)}
+                              </div>
+                            )}
+                          </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-[var(--text)] text-sm truncate max-w-[120px] md:max-w-none">
+                            <p className="font-semibold text-[var(--text)] text-base md:text-lg truncate max-w-[140px] md:max-w-none">
                               {p.playerName}
                             </p>
-                            <p className="text-[10px] uppercase tracking-wider" style={{ color: p.teamColor }}>
+                            <p className="text-[10px] md:text-xs uppercase tracking-wider font-medium mt-0.5" style={{ color: p.teamColor }}>
                               {p.teamName}
                             </p>
                           </div>
