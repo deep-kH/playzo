@@ -350,7 +350,7 @@ export default function TournamentStandingsPage() {
           {/* Legend */}
           <div className="px-4 py-2.5 border-t border-[var(--border)]/50 bg-[var(--surface-alt)]">
             <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
-              W = 3pts · NR = 1pt · L = 0pts · NRR = Net Run Rate
+              W = 2pts · NR = 1pt · L = 0pts · NRR = Net Run Rate
             </p>
           </div>
         </div>
