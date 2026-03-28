@@ -5,22 +5,28 @@ import type { Player, BattingStats } from "@/lib/types/database";
 interface NewBatterSelectorProps {
   availableBatters: Player[];
   battingStats: BattingStats[];
+  /** IDs of batters currently at the crease (striker + non-striker) */
+  currentBatterIds?: string[];
   onSelect: (batterId: string) => void;
 }
 
 export function NewBatterSelector({
   availableBatters,
   battingStats,
+  currentBatterIds = [],
   onSelect,
 }: NewBatterSelectorProps) {
-  // Filter out players who are already out or currently batting
-  const outPlayerIds = new Set(
-    battingStats
-      .filter((bs) => bs.is_out || bs.balls_faced > 0)
-      .map((bs) => bs.player_id)
+  // Dismissed players: only those explicitly marked as out
+  const dismissedIds = new Set(
+    battingStats.filter((bs) => bs.is_out).map((bs) => bs.player_id)
   );
-  // Available = in playing XI, not out, and haven't already been at the crease
-  const yetToBat = availableBatters.filter((p) => !outPlayerIds.has(p.id));
+  // Also exclude anyone currently at the crease
+  const currentIds = new Set(currentBatterIds);
+
+  // Available = in batting team, not dismissed, not currently batting
+  const yetToBat = availableBatters.filter(
+    (p) => !dismissedIds.has(p.id) && !currentIds.has(p.id)
+  );
 
   return (
     <div className="card border-warning/40 animate-fade-in">

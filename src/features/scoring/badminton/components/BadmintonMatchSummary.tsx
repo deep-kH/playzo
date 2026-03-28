@@ -48,8 +48,8 @@ export function BadmintonMatchSummary({
     <div className="space-y-6 w-full max-w-2xl mx-auto">
       {/* Winner Announcement */}
       <div className="text-center py-8 space-y-4">
-        <div className="text-6xl">{isIncomplete ? "⚠️" : "🏆"}</div>
-        <div className="text-3xl font-black text-[var(--text)]">
+        <div className="text-4xl md:text-6xl">{isIncomplete ? "⚠️" : "🏆"}</div>
+        <div className="text-2xl md:text-3xl font-black text-[var(--text)]">
           {isIncomplete ? "Match Stopped Early" : "Match Complete"}
         </div>
         {!isDraw && (
@@ -88,7 +88,7 @@ export function BadmintonMatchSummary({
             </div>
           )}
           <div
-            className="text-5xl font-bold tabular-nums leading-none"
+            className="text-4xl md:text-5xl font-bold tabular-nums leading-none"
             style={{ color: (winnerIsA && !isDraw) ? "var(--primary)" : "var(--text-muted)" }}
           >
             {games_won.team_a}
@@ -124,7 +124,7 @@ export function BadmintonMatchSummary({
             </div>
           )}
           <div
-            className="text-5xl font-bold tabular-nums leading-none"
+            className="text-4xl md:text-5xl font-bold tabular-nums leading-none"
             style={{ color: (!winnerIsA && !isDraw) ? "var(--success)" : "var(--text-muted)" }}
           >
             {games_won.team_b}

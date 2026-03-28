@@ -107,21 +107,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    // Listen for auth changes
+    // Listen for auth changes (including TOKEN_REFRESHED)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, s) => {
+    } = supabase.auth.onAuthStateChange(async (event, s) => {
       try {
         setSession(s);
         setUser(s?.user ?? null);
+
+        if (event === "TOKEN_REFRESHED") {
+          console.log("[AuthProvider] Token refreshed — session is valid");
+          // Token was silently refreshed; just update session, no profile re-fetch needed
+          return;
+        }
+
         if (s?.user && !isSigningIn.current) {
           const prof = await fetchProfile(s.user.id);
           await validateDeviceSession(prof);
         } else if (!s?.user) {
           setProfile(null);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Auth state change error:", err);
+        setSessionError(err?.message ?? "Authentication error. Please sign in again.");
       } finally {
         setIsLoading(false);
       }

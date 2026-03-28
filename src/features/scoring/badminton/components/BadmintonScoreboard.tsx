@@ -128,7 +128,7 @@ export function BadmintonScoreboard({
               {playerA1} & {playerA2}
             </div>
           )}
-          <div className="text-7xl font-bold tabular-nums text-[var(--primary)] leading-none">
+          <div className="text-5xl md:text-7xl font-bold tabular-nums text-[var(--primary)] leading-none">
             {currentScore.team_a}
           </div>
           <GameDots won={games_won.team_a} total={setsToWin} color="primary" />
@@ -165,7 +165,7 @@ export function BadmintonScoreboard({
               {playerB1} & {playerB2}
             </div>
           )}
-          <div className="text-7xl font-bold tabular-nums text-[var(--success)] leading-none">
+          <div className="text-5xl md:text-7xl font-bold tabular-nums text-[var(--success)] leading-none">
             {currentScore.team_b}
           </div>
           <GameDots won={games_won.team_b} total={setsToWin} color="success" />

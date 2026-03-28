@@ -119,11 +119,11 @@ export default function TournamentStandingsPage() {
         if (winnerId) {
           if (winnerId === m.team_a_id) {
             aRow.won++;
-            aRow.points += 3; // Win = 3 points
+            aRow.points += 2; // Win = 3 points
             bRow.lost++;
           } else if (winnerId === m.team_b_id) {
             bRow.won++;
-            bRow.points += 3; // Win = 3 points
+            bRow.points += 2; // Win = 3 points
             aRow.lost++;
           }
         } else if (isTie) {

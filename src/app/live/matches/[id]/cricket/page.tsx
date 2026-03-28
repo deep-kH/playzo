@@ -9,6 +9,7 @@ import type { CricketMatchState } from "@/features/scoring/cricket/types";
 import { DEFAULT_CRICKET_STATE } from "@/features/scoring/cricket/types";
 import { toRealOvers, formatOvers } from "@/features/scoring/cricket/oversUtils";
 import { CricketMatchResult } from "@/features/scoring/cricket/components/CricketMatchResult";
+import { useLiveMatch } from "@/features/realtime/useLiveMatch";
 
 /* ═══════════════════════════════════════════════════
  *  OVERLAY TYPES
@@ -74,8 +75,6 @@ export default function CricketLiveViewer() {
   const [battingStats, setBattingStats] = useState<BattingStats[]>([]);
   const [bowlingStats, setBowlingStats] = useState<BowlingStats[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   /* ── Overlay state ── */
   const [overlay, setOverlay] = useState<OverlayEvent | null>(null);
@@ -83,32 +82,51 @@ export default function CricketLiveViewer() {
   const prevStateRef = useRef<CricketMatchState>(DEFAULT_CRICKET_STATE);
   const overlayTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const loadData = useCallback(async () => {
+  // Refs to cache static data (match, teams, players) — only fetched once
+  const matchRef = useRef<Match | null>(null);
+  const teamARef = useRef<Team | null>(null);
+  const teamBRef = useRef<Team | null>(null);
+  const playersRef = useRef<Player[]>([]);
+
+  const loadData = useCallback(async (): Promise<boolean> => {
     try {
-      const { data: m } = await supabase.from("ls_matches").select("*").eq("id", matchId).maybeSingle();
-      if (!m) { setError("Match not found."); setLoading(false); return; }
-      setMatch(m as Match);
+      // 1. Static data — cached after first load
+      let m = matchRef.current;
+      if (!m) {
+        const { data } = await supabase.from("ls_matches").select("*").eq("id", matchId).maybeSingle();
+        if (!data) return false;
+        m = data as Match;
+        matchRef.current = m;
+        setMatch(m);
+      }
+      if (!teamARef.current || !teamBRef.current || playersRef.current.length === 0) {
+        const [{ data: tA }, { data: tB }, { data: plrs }] = await Promise.all([
+          supabase.from("teams").select("*").eq("id", m.team_a_id).maybeSingle(),
+          supabase.from("teams").select("*").eq("id", m.team_b_id).maybeSingle(),
+          supabase.from("players").select("*").in("team_id", [m.team_a_id, m.team_b_id]),
+        ]);
+        if (tA) { teamARef.current = tA as unknown as Team; setTeamA(teamARef.current); }
+        if (tB) { teamBRef.current = tB as unknown as Team; setTeamB(teamBRef.current); }
+        playersRef.current = (plrs as Player[]) ?? [];
+        setPlayers(playersRef.current);
+      }
 
-      const [{ data: tA }, { data: tB }] = await Promise.all([
-        supabase.from("teams").select("*").eq("id", (m as any).team_a_id).maybeSingle(),
-        supabase.from("teams").select("*").eq("id", (m as any).team_b_id).maybeSingle(),
-      ]);
-      setTeamA((tA as unknown as Team) ?? null);
-      setTeamB((tB as unknown as Team) ?? null);
-
-      const { data: plrs } = await supabase.from("players").select("*")
-        .in("team_id", [(m as any).team_a_id, (m as any).team_b_id]);
-      setPlayers((plrs as Player[]) ?? []);
-
+      // 2. Dynamic data — ALWAYS refresh, PARALLELIZED
       const { data: msData } = await supabase.from("ls_match_state").select("*")
         .eq("match_id", matchId).maybeSingle();
       setMatchState((msData as unknown as MatchState) ?? null);
 
       let inn: Innings | null = null;
       if (msData && (msData as any).current_innings_id) {
-        const { data: innData } = await supabase.from("ls_innings").select("*")
-          .eq("id", (msData as any).current_innings_id).maybeSingle();
-        inn = (innData as unknown as Innings) ?? null;
+        // Fetch innings + stats in parallel
+        const [innResult, bsResult, bwsResult] = await Promise.all([
+          supabase.from("ls_innings").select("*").eq("id", (msData as any).current_innings_id).maybeSingle(),
+          supabase.from("ls_batting_stats").select("*").eq("innings_id", (msData as any).current_innings_id),
+          supabase.from("ls_bowling_stats").select("*").eq("innings_id", (msData as any).current_innings_id),
+        ]);
+        inn = (innResult.data as unknown as Innings) ?? null;
+        setBattingStats((bsResult.data as BattingStats[]) ?? []);
+        setBowlingStats((bwsResult.data as BowlingStats[]) ?? []);
       }
       if (!inn) {
         const { data: innData } = await supabase.from("ls_innings").select("*")
@@ -117,67 +135,26 @@ export default function CricketLiveViewer() {
       }
       setInnings(inn);
 
-      if (inn) {
-        const [{ data: bs }, { data: bws }] = await Promise.all([
-          supabase.from("ls_batting_stats").select("*").eq("innings_id", inn.id),
-          supabase.from("ls_bowling_stats").select("*").eq("innings_id", inn.id),
-        ]);
-        setBattingStats((bs as BattingStats[]) ?? []);
-        setBowlingStats((bws as BowlingStats[]) ?? []);
-      }
-
-      const cs = buildCricketState(m as Match, (msData as unknown as MatchState) ?? null, inn);
+      const cs = buildCricketState(m, (msData as unknown as MatchState) ?? null, inn);
       setCricketState(cs);
-      setLoading(false);
+      return true;
     } catch (err) {
-      console.error("Live data load error:", err);
-      setError((err as Error).message);
-      setLoading(false);
+      console.error("[CricketLive] loadData ERROR:", err);
+      return false;
     }
   }, [matchId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  /* ── Centralized resilient data layer ──
+   * Uses useLiveMatch with custom fetcher for auto-reconnect,
+   * tab visibility refresh, polling fallback, and race prevention.
+   */
+  const { loading, error, connectionStatus } = useLiveMatch<CricketMatchState>({
+    matchId,
+    initialState: DEFAULT_CRICKET_STATE,
+    fetcher: loadData,
+  });
 
-  /* ── Debounced loader for realtime ── */
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedLoad = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { loadData(); }, 200);
-  }, [loadData]);
 
-  /* ── Realtime subscription ── */
-  useEffect(() => {
-    if (!matchId) return;
-    const channel = supabase.channel(`live-cricket:${matchId}-${innings?.id || 'init'}`);
-
-    channel.on("postgres_changes", {
-      event: "*", schema: "public", table: "ls_match_state",
-      filter: `match_id=eq.${matchId}`,
-    }, () => { debouncedLoad(); });
-
-    channel.on("postgres_changes", {
-      event: "*", schema: "public", table: "ls_innings",
-      filter: `match_id=eq.${matchId}`,
-    }, () => { debouncedLoad(); });
-
-    if (innings?.id) {
-      channel.on("postgres_changes", {
-        event: "*", schema: "public", table: "ls_batting_stats",
-        filter: `innings_id=eq.${innings.id}`,
-      }, () => { debouncedLoad(); });
-
-      channel.on("postgres_changes", {
-        event: "*", schema: "public", table: "ls_bowling_stats",
-        filter: `innings_id=eq.${innings.id}`,
-      }, () => { debouncedLoad(); });
-    }
-
-    channel.subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [matchId, innings?.id, debouncedLoad]);
 
   /* ── Overlay detection ── */
   useEffect(() => {

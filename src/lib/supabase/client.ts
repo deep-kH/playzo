@@ -10,4 +10,3 @@ export const supabase = createBrowserClient<Database>(
   supabaseUrl,
   supabaseAnonKey
 );
-

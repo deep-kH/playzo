@@ -50,7 +50,7 @@ export function FootballMatchSummary({ state, teamAName, teamBName, teamALogo, t
               <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center font-bold text-xl text-emerald-400">{teamAName.charAt(0)}</div>}
             <span className="text-xs font-bold text-[var(--text)]">{teamAName}</span>
           </div>
-          <div className="text-5xl font-black tabular-nums text-[var(--text)]">{scoreA} – {scoreB}</div>
+          <div className="text-4xl md:text-5xl font-black tabular-nums text-[var(--text)]">{scoreA} – {scoreB}</div>
           <div className="flex flex-col items-center gap-1">
             {teamBLogo ? <img src={teamBLogo} className="w-12 h-12 rounded-full object-cover" alt="" /> :
               <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center font-bold text-xl text-amber-400">{teamBName.charAt(0)}</div>}

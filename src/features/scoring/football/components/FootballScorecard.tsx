@@ -75,7 +75,7 @@ export function FootballScorecard({
 
           {/* Score + Clock */}
           <div className="flex flex-col items-center gap-2 px-6 min-w-[140px]">
-            <div className="text-6xl md:text-7xl font-black tabular-nums tracking-tighter text-[var(--text)]"
+            <div className="text-5xl md:text-6xl lg:text-7xl font-black tabular-nums tracking-tighter text-[var(--text)]"
               style={{ textShadow: '0 4px 12px var(--shadow)' }}>
               {scoreA} – {scoreB}
             </div>
